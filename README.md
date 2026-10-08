@@ -47,7 +47,8 @@ HuiWenMCP/
 ├── tests/pdf_samples/                 [规划] 文字、双栏、表格等转换样本
 ├── third_party_licenses/             [规划] 产品分发所需的许可材料
 ├── CMakeLists.txt                     [规划] Qt 桌面工程入口
-├── build-profile.json5               [已有] 鸿蒙全局构建配置
+├── build-profile.example.json5       [已有] 不含签名信息的全局构建配置模板
+├── build-profile.json5               [本机] 签名配置，已被 Git 忽略
 └── README.md                          [已有] 项目状态与维护说明
 ```
 
@@ -55,7 +56,7 @@ HuiWenMCP/
 
 ## 本地构建
 
-工程当前配置为 HarmonyOS PC、`arm64-v8a`，目标 SDK 为 `6.1.1(24)`。构建仍会编译保留的 Qt 示例，因此需要先检查 `entry/build-profile.json5` 中的 `QT_PREFIX` 是否指向本机的 Qt 5.15.12 鸿蒙构建目录。
+工程当前配置为 HarmonyOS PC、`arm64-v8a`，目标 SDK 为 `6.1.1(24)`。首次克隆后，将 `build-profile.example.json5` 复制为本机的 `build-profile.json5`，需要安装到设备时再在 DevEco Studio 配置签名。构建仍会编译保留的 Qt 示例，因此还需检查 `entry/build-profile.json5` 中的 `QT_PREFIX` 是否指向本机的 Qt 5.15.12 鸿蒙构建目录。
 
 ```sh
 cd entry && ohpm install
@@ -63,7 +64,7 @@ cd ..
 hvigorw assembleHap --mode module -p product=default -p module=entry@default
 ```
 
-也可以在 DevEco Studio 中使用 **Build Hap(s)/APP(s)**。修改代码后至少执行 `git diff --check`；需要验证设备行为时，再安装生成的签名 HAP 并启动 `EntryAbility`。
+也可以在 DevEco Studio 中使用 **Build Hap(s)/APP(s)**。修改代码后至少执行 `git diff --check`；需要验证设备行为时，再安装生成的签名 HAP 并启动 `EntryAbility`。本机签名文件已被 Git 忽略，推送前用 `git status` 确认它没有进入提交。
 
 ## 维护约定
 

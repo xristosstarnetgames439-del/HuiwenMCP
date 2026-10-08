@@ -1,6 +1,8 @@
 /node_modules
 /oh_modules
 /local.properties
+# 本机签名配置由安全模板复制生成，不进入 Git。
+/build-profile.json5
 /.idea
 **/build
 /.hvigor
