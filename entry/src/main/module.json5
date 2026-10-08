@@ -11,6 +11,13 @@
     "deliveryWithInstall": true,
     "installationFree": false,
     "pages": "$profile:main_pages",
+    // 随 entry HAP 安装的私有 Python 运行时，仅供本应用调用。
+    "hnpPackages": [
+      {
+        "package": "huiwen_python.hnp",
+        "type": "private"
+      }
+    ],
     "abilities": [
       {
         "name": "EntryAbility",

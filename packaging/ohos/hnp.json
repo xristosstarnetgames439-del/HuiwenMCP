@@ -1,0 +1,8 @@
+{
+  "type": "hnp-config",
+  "name": "huiwen_python",
+  "version": "1.0.0",
+  "install": {
+    "links": []
+  }
+}

@@ -5,6 +5,13 @@
 /build-profile.json5
 # 鸿蒙端原生库由源码构建，保留本机旧 Qt 运行库但不推送。
 /entry/libs/
+# Python HNP 是本机打包产物；仓库只保存打包脚本和自检源码。
+/hnp/**/*.hnp
+# Python 本机语法检查缓存。
+__pycache__/
+*.pyc
+# 覆盖本机全局忽略规则，保留鸿蒙打包脚本源码。
+!/packaging/ohos/
 /.idea
 **/build
 /.hvigor
