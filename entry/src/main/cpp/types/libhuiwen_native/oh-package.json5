@@ -1,0 +1,6 @@
+{
+  "name": "libhuiwen_native.so",
+  // NAPI 模块的 ArkTS 类型入口。
+  "types": "./Index.d.ts",
+  "version": "1.0.0"
+}

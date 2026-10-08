@@ -4,7 +4,6 @@
     "type": "entry",
     "description": "$string:module_desc",
     "mainElement": "EntryAbility",
-    "srcEntry": "./ets/abilitystage/MyAbilityStage.ets",
     "deviceTypes": [
       "tablet",
       "2in1"

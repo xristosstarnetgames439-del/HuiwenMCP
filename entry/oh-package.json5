@@ -6,6 +6,8 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "libplugins_platforms_qopenharmony.so": "file:./src/main/cpp/types/libplugins_platforms_qopenharmony"
+    "libplugins_platforms_qopenharmony.so": "file:./src/main/cpp/types/libplugins_platforms_qopenharmony",
+    // ArkTS 首页调用的 C++ NAPI 模块。
+    "libhuiwen_native.so": "file:./src/main/cpp/types/libhuiwen_native"
   }
 }

@@ -25,3 +25,7 @@ target_link_libraries(entry PRIVATE
     Qt5::Widgets
     Qt5::QOpenHarmonyPlatformIntegrationPlugin
 )
+
+# ArkTS 调用的 C++ NAPI 桥接库。
+add_library(huiwen_native SHARED napi_bridge.cpp)
+target_link_libraries(huiwen_native PRIVATE ace_napi.z.so)
