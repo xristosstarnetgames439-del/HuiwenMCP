@@ -6,7 +6,7 @@
 
 - 鸿蒙端使用 ArkTS 首页，提供 PDF 预览、MD 预览、PDF 转 MD 三个功能入口；按钮目前只显示选中提示，实际功能尚未接入。
 - `libhuiwen_native.so` 提供 `ping()`，用于验证 ArkTS 到 C++ NAPI 的调用链。
-- 原有 Qt 示例和 Qt 运行库暂时保留在工程中；当前首页不再启动 Qt。
+- 鸿蒙模块只保留 ArkTS 与 NAPI 代码；Qt 桌面界面计划在独立的 `qt_app/` 中实现。
 - Python HNP、PDF 转换和文件预览尚未接入。每完成一个阶段，请同步更新本节。
 
 ## 工程结构
@@ -25,9 +25,7 @@ HuiWenMCP/
 │   │   └── cpp/
 │   │       ├── CMakeLists.txt          [已有] 原生库构建配置
 │   │       ├── napi_bridge.cpp        [已有] ArkTS → C++ 的 NAPI 接口
-│   │       ├── main.cpp               [已有] 保留的 Qt 示例入口
 │   │       └── types/                 [已有] 原生模块的 ArkTS 类型声明
-│   ├── libs/arm64-v8a/                [已有] Qt 运行库等随 HAP 分发的 .so
 │   ├── build-profile.json5            [已有] HAP 构建与 ABI 配置
 │   └── oh-package.json5               [已有] 模块依赖
 ├── converter/                         [规划] Windows、macOS 与鸿蒙共用的 Python 转换逻辑
@@ -52,11 +50,11 @@ HuiWenMCP/
 └── README.md                          [已有] 项目状态与维护说明
 ```
 
-当前调用链是 `ArkTS 首页 → libhuiwen_native.so → ping()`。鸿蒙 UI 已选用 ArkTS；规划中的 Qt UI 面向 Windows、macOS，共用 `converter/` 的转换逻辑。`libhuiwen_native.so` 由 CMake 构建并装入 HAP；Python 及其原生扩展将随 HNP 部署，现有 `entry/libs/arm64-v8a/` 主要存放 Qt 运行库。
+当前调用链是 `ArkTS 首页 → libhuiwen_native.so → ping()`。鸿蒙 UI 已选用 ArkTS；规划中的 Qt UI 面向 Windows、macOS，共用 `converter/` 的转换逻辑。`libhuiwen_native.so` 由 CMake 构建并装入 HAP，不需要在 Git 中保存编译好的 `.so`；Python 及其原生扩展计划随 HNP 部署。
 
 ## 本地构建
 
-工程当前配置为 HarmonyOS PC、`arm64-v8a`，目标 SDK 为 `6.1.1(24)`。首次克隆后，将 `build-profile.example.json5` 复制为本机的 `build-profile.json5`，需要安装到设备时再在 DevEco Studio 配置签名。构建仍会编译保留的 Qt 示例，因此还需检查 `entry/build-profile.json5` 中的 `QT_PREFIX` 是否指向本机的 Qt 5.15.12 鸿蒙构建目录。
+工程当前配置为 HarmonyOS PC、`arm64-v8a`，目标 SDK 为 `6.1.1(24)`。首次克隆后，将 `build-profile.example.json5` 复制为本机的 `build-profile.json5`，需要安装到设备时再在 DevEco Studio 配置签名。鸿蒙模块的 NAPI `.so` 由 CMake 从源码构建，无需下载 Qt 运行库。
 
 ```sh
 cd entry && ohpm install
@@ -71,3 +69,4 @@ hvigorw assembleHap --mode module -p product=default -p module=entry@default
 - 新增功能时更新“当前状态”，区分已运行的能力与尚未接入的入口。
 - 调整模块、原生库或打包方式时更新“工程结构”和“本地构建”。
 - 不把生成的 HAP、构建缓存或本机 SDK 路径写成跨机器通用的依赖。
+- 不提交 `entry/libs/` 下的本机 Qt 运行库；鸿蒙端需要的 NAPI `.so` 在构建时生成。

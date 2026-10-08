@@ -1,6 +1,0 @@
-{
-  "name": "libplugins_platforms_qopenharmony.so",
-  "types": "./Index.d.ts",
-  "version": "1.0.0",
-  "description": "Qt 5.15.12 OpenHarmony platform bridge types."
-}

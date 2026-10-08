@@ -8,7 +8,7 @@
     },
     "externalNativeOptions": {
       "path": "./src/main/cpp/CMakeLists.txt",
-      "arguments": "-DQT_PREFIX=/Users/Zhuanz/COhBuild/Build/work/output/Qt5.15.12-ohos17-arm64-v8a",
+      "arguments": "",
       "cppFlags": "",
       "abiFilters": [
         "arm64-v8a"
