@@ -1,0 +1,37 @@
+--- a/markitdown/_markitdown.py
++++ b/markitdown/_markitdown.py
+@@ -14,9 +14,13 @@
+ from urllib.parse import urlparse
+ from warnings import warn
+ import requests
+-import magika
+ import charset_normalizer
+ import codecs
++
++try:
++    import magika
++except ImportError:
++    magika = None
+ 
+ from ._stream_info import StreamInfo
+ from ._uri_utils import parse_data_uri, file_uri_to_path
+@@ -165,7 +169,7 @@
+         else:
+             self._requests_session = requests_session
+ 
+-        self._magika = magika.Magika()
++        self._magika = magika.Magika() if magika is not None else None
+ 
+         # TODO - remove these (see enable_builtins)
+         self._llm_client: Any = None
+@@ -762,6 +766,10 @@
+             _e = mimetypes.guess_all_extensions(base_guess.mimetype, strict=False)
+             if len(_e) > 0:
+                 enhanced_guess = enhanced_guess.copy_and_update(extension=_e[0])
++
++        # 已知扩展名的 PDF 不需要模型识别；鸿蒙端据此省去 ONNX Runtime。
++        if self._magika is None:
++            return [enhanced_guess]
+ 
+         # Call magika to guess from the stream
+         cur_pos = file_stream.tell()

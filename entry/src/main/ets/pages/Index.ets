@@ -1,5 +1,5 @@
 import { common } from '@kit.AbilityKit';
-import nativeBridge from 'libhuiwen_native.so';
+import { getNativeStatus, pdfToMd } from '../services/ConversionService';
 import { DocumentKind, pickDocumentToSandbox } from '../utils/DocumentStore';
 
 @Entry
@@ -12,14 +12,15 @@ struct Index {
   @State inputPath: string = '';
   @State outputPath: string = '';
   @State selectionError: string = '';
+  @State conversionStatus: string = '';
   @State pickerBusy: boolean = false;
 
   aboutToAppear(): void {
     // 首页打开时检查 ArkTS 是否能调用 C++ NAPI 模块。
-    this.pingResult = nativeBridge.ping();
+    this.pingResult = getNativeStatus();
   }
 
-  // 三个入口共用选择流程；本阶段只导入文件并记录路径，保持在首页。
+  // 三个入口共用沙箱导入；仅转换入口生成 MD，完成后仍留在首页。
   private async chooseDocument(action: string, kind: DocumentKind, forConversion: boolean): Promise<void> {
     if (this.pickerBusy) {
       return;
@@ -35,10 +36,22 @@ struct Index {
       this.selectedName = document.name;
       this.sourceUri = document.uri;
       this.inputPath = document.inputPath;
-      this.outputPath = document.outputPath;
+      this.outputPath = '';
       this.selectionError = '';
+      this.conversionStatus = '';
+      if (forConversion) {
+        this.conversionStatus = '正在转换 PDF…';
+        try {
+          this.outputPath = await pdfToMd(document.inputPath, document.outputPath);
+          this.conversionStatus = 'MD 文件已生成';
+        } catch (error) {
+          this.conversionStatus = '';
+          this.selectionError = `PDF 转换失败：${(error as Error).message}`;
+        }
+      }
     } catch (error) {
       this.selectionError = `选择或复制文件失败：${(error as Error).message}`;
+      this.conversionStatus = '';
     } finally {
       this.pickerBusy = false;
     }
@@ -106,15 +119,20 @@ struct Index {
             .fontSize(12)
             .fontColor('#667B98')
           if (this.outputPath !== '') {
-            Text(`预定 MD 路径：${this.outputPath}`)
+            Text(`生成的 MD 路径：${this.outputPath}`)
               .fontSize(12)
               .fontColor('#667B98')
           }
         }
         if (this.pickerBusy) {
-          Text('正在选择或复制文件…')
+          Text(this.conversionStatus || '正在选择或复制文件…')
             .fontSize(13)
             .fontColor('#667B98')
+        }
+        if (!this.pickerBusy && this.conversionStatus !== '') {
+          Text(this.conversionStatus)
+            .fontSize(13)
+            .fontColor('#26734D')
         }
         if (this.selectionError !== '') {
           Text(this.selectionError)

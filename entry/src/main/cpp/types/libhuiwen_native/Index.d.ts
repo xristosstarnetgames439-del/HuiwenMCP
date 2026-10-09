@@ -2,6 +2,8 @@
 interface HuiwenNative {
   ping(): string;
   checkPython(): Promise<string>;
+  // 异步把沙箱 PDF 写成 MD；成功返回输出路径，失败拒绝 Promise。
+  convertPdf(inputPath: string, outputPath: string): Promise<string>;
 }
 
 declare const nativeBridge: HuiwenNative;

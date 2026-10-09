@@ -1,10 +1,9 @@
 /*
  * 汇文 MCP 的私有 HNP Python 进程启动器。
- * 定位应用自带解释器，执行固定脚本并收集输出供 ArkTS 展示。
+ * 定位应用自带解释器，异步任务中执行固定脚本并收集运行结果。
  */
 #include "python_runner.h"
 
-#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cstdlib>
@@ -14,6 +13,7 @@
 #include <string>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <vector>
 
 extern char **environ;
 
@@ -39,16 +39,15 @@ std::string FindPythonRoot()
     }
     throw std::runtime_error("未找到私有 HNP 解释器；请确认 huiwen_python.hnp 已随 HAP 安装。HNP_PRIVATE_HOME=" + base);
 }
-} // namespace
-
-std::string RunPythonSmoke()
+std::string RunPythonScript(const char *scriptName, const std::vector<std::string> &paths,
+                            const char *successMarker, const char *action)
 {
     const std::string root = FindPythonRoot();
     const std::string python = root + "/bin/python3";
-    const std::string script = root + "/share/huiwen/python_smoke.py";
+    const std::string script = root + "/share/huiwen/" + scriptName;
     if (access(script.c_str(), R_OK) != 0)
     {
-        throw std::runtime_error("HNP 中缺少自检脚本: " + script);
+        throw std::runtime_error("HNP 中缺少脚本: " + script);
     }
 
     int outputPipe[2];
@@ -69,10 +68,16 @@ std::string RunPythonSmoke()
     posix_spawn_file_actions_adddup2(&actions, outputPipe[1], STDERR_FILENO);
     posix_spawn_file_actions_addclose(&actions, outputPipe[1]);
 
-    char *const args[] = {const_cast<char *>(python.c_str()), const_cast<char *>("-B"),
-                          const_cast<char *>(script.c_str()), nullptr};
+    // 参数直接传给固定脚本，不经过 Shell。
+    std::vector<char *> args = {const_cast<char *>(python.c_str()), const_cast<char *>("-B"),
+                                const_cast<char *>(script.c_str())};
+    for (const auto &path : paths)
+    {
+        args.push_back(const_cast<char *>(path.c_str()));
+    }
+    args.push_back(nullptr);
     pid_t child = -1;
-    code = posix_spawn(&child, python.c_str(), &actions, nullptr, args, environ);
+    code = posix_spawn(&child, python.c_str(), &actions, nullptr, args.data(), environ);
     posix_spawn_file_actions_destroy(&actions);
     close(outputPipe[1]);
     if (code != 0)
@@ -89,9 +94,10 @@ std::string RunPythonSmoke()
         const ssize_t length = read(outputPipe[0], buffer, sizeof(buffer));
         if (length > 0)
         {
-            if (output.size() < 4096)
+            output.append(buffer, static_cast<size_t>(length));
+            if (output.size() > 4096)
             {
-                output.append(buffer, std::min(static_cast<size_t>(length), 4096 - output.size()));
+                output.erase(0, output.size() - 4096);
             }
         }
         else if (length == 0)
@@ -123,11 +129,31 @@ std::string RunPythonSmoke()
     }
     if (WEXITSTATUS(childStatus) != 0)
     {
-        throw std::runtime_error("Python 自检退出码 " + std::to_string(WEXITSTATUS(childStatus)) + ": " + output);
+        throw std::runtime_error(std::string(action) + "退出码 " + std::to_string(WEXITSTATUS(childStatus)) + ": " + output);
     }
-    if (output.find("HUIWEN_PYTHON_OK") == std::string::npos)
+    if (output.find(successMarker) == std::string::npos)
     {
-        throw std::runtime_error("Python 未返回预期结果: " + output);
+        throw std::runtime_error(std::string(action) + "未返回预期结果: " + output);
     }
     return output;
+}
+} // namespace
+
+std::string RunPythonSmoke()
+{
+    return RunPythonScript("python_smoke.py", {}, "HUIWEN_PYTHON_OK", "Python 自检");
+}
+
+std::string RunPdfConversion(const std::string &inputPath, const std::string &outputPath)
+{
+    if (inputPath.empty() || outputPath.empty())
+    {
+        throw std::runtime_error("PDF 输入或 MD 输出路径为空");
+    }
+    RunPythonScript("convert_pdf.py", {inputPath, outputPath}, "HUIWEN_CONVERT_OK", "PDF 转换");
+    if (access(outputPath.c_str(), R_OK) != 0)
+    {
+        throw std::runtime_error("转换完成后未找到 MD 文件: " + outputPath);
+    }
+    return outputPath;
 }

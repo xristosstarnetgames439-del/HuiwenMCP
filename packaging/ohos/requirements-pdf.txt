@@ -1,0 +1,19 @@
+# MarkItDown v0.1.8 的 PDF 路线；本阶段按文件后缀识别，暂不安装 Magika/ONNX Runtime。
+beautifulsoup4==4.15.0
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.2
+cryptography==50.0.2
+defusedxml==0.7.1
+idna==3.20
+markdownify==1.2.3
+pdfminer.six==20260107
+pdfplumber==0.11.10
+pillow==12.3.0
+pycparser==3.1
+pypdfium2==5.14.0
+requests==2.34.2
+six==1.17.0
+soupsieve==2.10
+typing_extensions==4.16.0
+urllib3==2.8.0
