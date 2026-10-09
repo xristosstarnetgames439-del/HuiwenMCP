@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 鸿蒙端使用 ArkTS 首页，提供 PDF 预览、MD 预览、PDF 转 MD 三个功能入口；按钮目前只显示选中提示，实际功能尚未接入。
+- 鸿蒙端使用 ArkTS 首页，提供 PDF 预览、MD 预览、PDF 转 MD 三个功能入口；三个按钮已接入系统文档选择器并将选中文件复制到应用沙箱，设备端效果待验收。选取后留在首页，尚不预览或转换。
 - `libhuiwen_native.so` 提供 `ping()` 和异步 `checkPython()`；后者保留为内部自检接口，不显示在首页。
 - 鸿蒙模块只保留 ArkTS 与 NAPI 代码；Qt 桌面界面计划在独立的 `qt_app/` 中实现。
 - Python HNP 的打包和调用链已在真机通过自检，返回 `HUIWEN_PYTHON_OK 3.14.6`。PDF 转换和文件预览尚未接入。每完成一个阶段，请同步更新本节。
@@ -21,7 +21,8 @@ HuiWenMCP/
 │   │   ├── module.json5               [已有] 设备类型、Ability 与私有 HNP 声明
 │   │   ├── ets/
 │   │   │   ├── entryability/EntryAbility.ets  [已有] ArkTS 启动入口
-│   │   │   └── pages/Index.ets         [已有] 首页和三个功能入口
+│   │   │   ├── pages/Index.ets         [已有] 首页和三个文件选择入口
+│   │   │   └── utils/DocumentStore.ets [已有] 文件选择、沙箱副本与输出路径
 │   │   └── cpp/
 │   │       ├── CMakeLists.txt          [已有] 原生库构建配置
 │   │       ├── napi_bridge.cpp        [已有] ArkTS → C++ 的 NAPI 接口
@@ -53,6 +54,28 @@ HuiWenMCP/
 ```
 
 内部自检调用链是 `checkPython() → libhuiwen_native.so → 私有 HNP Python → python_smoke.py`；首页只保留三个业务入口。鸿蒙 UI 已选用 ArkTS；规划中的 Qt UI 面向 Windows、macOS，共用 `converter/` 的转换逻辑。`libhuiwen_native.so` 由 CMake 构建并装入 HAP，不需要在 Git 中保存编译好的 `.so`；当前 HNP 包含 Python，后续转换依赖的原生扩展也应随 HNP 部署。
+
+## 沙箱文件路径
+
+当前设备用户号为 `100` 时，应用私有沙箱的预期物理路径如下。程序通过 `getApplicationContext().filesDir` 获取运行时目录，不写死用户号和包路径；设备上的实际映射需在验收时核对。
+
+```text
+/data/app/el2/100/base/cn.com.HuiWenMCP/
+└── files/
+    ├── inputs/
+    │   ├── pdf/                 PDF 预览、PDF 转 MD 选入的副本
+    │   └── md/                  MD 预览选入的副本
+    └── outputs/
+        └── md/                  将来生成的 Markdown
+```
+
+| 按钮 | 选取后记录的路径 | 本阶段行为 |
+| --- | --- | --- |
+| PDF 预览 | `files/inputs/pdf/<唯一编号>.pdf` | 打开系统选择器、复制文件、留在首页 |
+| MD 预览 | `files/inputs/md/<唯一编号>.md`（选择 `.markdown` 时保留该后缀） | 打开系统选择器、复制文件、留在首页 |
+| PDF 转 MD | 输入：`files/inputs/pdf/<唯一编号>.pdf`；预定输出：`files/outputs/md/<原文件名>-<唯一编号>.md` | 打开系统选择器、复制输入、确定输出路径、留在首页 |
+
+系统选择器返回的 URI 只用于读取选中文件；应用内部后续使用沙箱副本路径。当前仅创建输入副本和所需目录，预定输出路径下尚无 `.md` 文件，也不会跳转到预览或转换页。
 
 ## 本地构建
 
