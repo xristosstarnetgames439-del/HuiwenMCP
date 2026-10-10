@@ -22,9 +22,9 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageCreate(windowStage: Window.WindowStage) {
-    // 启动后直接加载 ArkTS 首页。
+    // ArkTS 首页使用独立路由，pages/Index 留给 QPA 承载 Qt 节点。
     hilog.info(this.domain, this.tag, '%{public}s', 'Ability onWindowStageCreate');
-    windowStage.loadContent('pages/Index', (err) => {
+    windowStage.loadContent('pages/HomePage', (err) => {
       if (err.code) {
         hilog.error(this.domain, this.tag, 'Failed to load page: %{public}s', JSON.stringify(err));
       }

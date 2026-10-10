@@ -7,6 +7,8 @@
   "license": "",
   "dependencies": {
     // ArkTS 首页调用的 C++ NAPI 模块。
-    "libhuiwen_native.so": "file:./src/main/cpp/types/libhuiwen_native"
+    "libhuiwen_native.so": "file:./src/main/cpp/types/libhuiwen_native",
+    // Qt 启动桥的类型声明，运行库由 CMake 从本机 SDK 复制。
+    "libplugins_platforms_qopenharmony.so": "file:./src/main/cpp/types/libplugins_platforms_qopenharmony"
   }
 }

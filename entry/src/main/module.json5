@@ -4,6 +4,8 @@
     "type": "entry",
     "description": "$string:module_desc",
     "mainElement": "EntryAbility",
+    // Qt 平台初始化与独立工作区 Ability；首页仍为 ArkTS。
+    "srcEntry": "./ets/abilitystage/QtAbilityStage.ets",
     "deviceTypes": [
       "tablet",
       "2in1"
@@ -19,6 +21,17 @@
       }
     ],
     "abilities": [
+      {
+        "name": "QtWorkspaceAbility",
+        "srcEntry": "./ets/entryability/QtWorkspaceAbility.ets",
+        "launchType": "singleton",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:EntryAbility_label",
+        "startWindowIcon": "$media:startIcon",
+        "startWindowBackground": "$color:start_window_background",
+        "exported": false
+      },
       {
         "name": "EntryAbility",
         "srcEntry": "./ets/entryability/EntryAbility.ets",
