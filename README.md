@@ -4,11 +4,11 @@
 
 ## 当前状态
 
-- 鸿蒙端使用 ArkTS 首页，三个按钮已接入系统文档选择器并将文件复制到应用沙箱。PDF 转 MD 入口通过 `ConversionService.ets` 异步转换并在首页显示生成路径或错误；两个预览入口目前只导入文件。设备端新链路待验收。
-- `libhuiwen_native.so` 提供 `ping()`、异步 `checkPython()` 和 `convertPdf()`；自检接口不显示在首页。
-- 鸿蒙模块只保留 ArkTS 与 NAPI 代码；Qt 桌面界面计划在独立的 `qt_app/` 中实现。
-- Python HNP 的原有自检链已在真机返回 `HUIWEN_PYTHON_OK 3.14.6`。本阶段接入 MarkItDown `v0.1.8` 的 PDF 转换，新增依赖及转换链尚未在鸿蒙设备验证；文件预览暂不接入。每完成一个阶段，请同步更新本节。
-- 汇文 Python 包目前只公开 `pdf_to_md()`；Word `.docx` 等格式在依赖和设备转换通过后再增加对应接口。
+- 首页保持 ArkTS；PDF/MD 预览按钮仍只导入文件，PDF 转 MD 按钮改为启动独立 Qt 工作区。
+- Qt 工作区默认最大化并保留系统标题栏和窗口边框，输入、输出区域解耦；中部分割线可拖动，悬浮“转化”按钮随分隔线移动。
+- 输入文件卡片调用现有 DocumentStore 选择 PDF、复制沙箱并安排输出路径。Qt ConversionService 在工作线程复用 PythonRunner 转换，成功后显示 MD 文件卡片。本阶段不渲染 PDF/MD 内容。
+- 原有 Python HNP 自检与 PDF 转换已由用户在真机验证成功。新增 Qt 窗口交接、选择与结果位置操作需要真机验收。
+- 汇文 Python 包只公开 `pdf_to_md()`；后续格式在依赖和设备转换通过后再增加。
 
 ## 工程结构
 
@@ -21,8 +21,11 @@ HuiWenMCP/
 │   ├── src/main/
 │   │   ├── module.json5               [已有] 设备类型、Ability 与私有 HNP 声明
 │   │   ├── ets/
+│   │   │   ├── abilitystage/QtAbilityStage.ets [已有] Qt 平台初始化
 │   │   │   ├── entryability/EntryAbility.ets  [已有] ArkTS 启动入口
-│   │   │   ├── pages/Index.ets         [已有] 首页和三个文件选择入口
+│   │   │   ├── entryability/QtWorkspaceAbility.ets [已有] Qt 窗口及系统文件操作
+│   │   │   ├── pages/HomePage.ets      [已有] ArkTS 首页和功能入口
+│   │   │   ├── pages/Index.ets         [已有] QPA 固定加载的 Qt XComponent 承载页
 │   │   │   ├── services/ConversionService.ets [已有] 页面调用原生转换的统一入口
 │   │   │   └── utils/DocumentStore.ets [已有] 文件选择、沙箱副本与输出路径
 │   │   └── cpp/
@@ -30,6 +33,8 @@ HuiWenMCP/
 │   │       ├── napi_bridge.cpp        [已有] ArkTS → C++ 的 NAPI 接口
 │   │       ├── python_runner.cpp/.h   [已有] 定位 HNP、启动固定自检或转换脚本
 │   │       └── types/                 [已有] 原生模块的 ArkTS 类型声明
+│   ├── libs/arm64-v8a/                [生成] 仅最小 Qt 运行库，不进入 Git
+│   │   └── libQt5{Core,Gui,Widgets,Concurrent}.so、libplugins_platforms_qopenharmony.so
 │   ├── build-profile.json5            [已有] HAP 构建与 ABI 配置
 │   ├── hvigorfile.ts                   [已有] 在 HAP 签名前注入 Python HNP
 │   └── oh-package.json5               [已有] 模块依赖
@@ -39,11 +44,21 @@ HuiWenMCP/
 │   │   ├── api.py                      [已有] 路径校验、写入 MD、返回输出路径
 │   │   └── _markitdown_adapter.py      [已有] 唯一直接调用 MarkItDown 的适配文件
 │   └── pdf2md/convert.py              [已有] HNP 固定的 PDF 命令入口
-├── qt_app/                            [规划] Windows、macOS 的 Qt 桌面界面
-│   ├── CMakeLists.txt
-│   ├── main.cpp
-│   ├── qml/                            主窗口、PDF 与 MD 预览组件
-│   └── src/                            转换任务控制与 Python 启动器
+├── qt_app/                            [已有] Qt Widgets 工作区，鸿蒙共享库/桌面可执行入口
+│   ├── CMakeLists.txt                 构建 huiwen_qt；当前已验证鸿蒙编译
+│   ├── main.cpp                       默认最大化并保留系统边框，显示成功后通知结束原首页
+│   └── src/
+│       ├── workspace/ConversionWindow.h/.cpp     主窗口与组件接线
+│       ├── sourceView/SourceDocumentView.h/.cpp 输入区域入口
+│       ├── resultView/MarkdownResultView.h/.cpp 输出区域入口
+│       ├── components/
+│       │   ├── FileCard.h/.cpp         PDF/MD 共用占位卡片
+│       │   └── ConvertButton.h/.cpp    独立悬浮转化按钮
+│       ├── services/ConversionService.h/.cpp    异步 PDF 转 MD API
+│       ├── sandbox/
+│       │   ├── DocumentItem.h         文件格式、名称和输入/输出路径
+│       │   └── SandboxService.h/.cpp  请求系统选择、接收沙箱路径和打开输出位置
+│       └── platform/harmony/qt_bridge.h/.cpp   Qt ↔ ArkTS 线程桥
 ├── hnp/arm64-v8a/                     [生成] 鸿蒙 Python 运行环境，不进入 Git
 │   └── huiwen_python.hnp               私有 HNP 归档，内部包含：
 │       ├── bin/python3                 Python 解释器
@@ -65,9 +80,15 @@ HuiWenMCP/
 └── README.md                          [已有] 项目状态与维护说明
 ```
 
-转换调用链是 `Index.ets → ConversionService.pdfToMd() → NAPI convertPdf() → python_runner.cpp → convert_pdf.py → huiwen_converter.pdf_to_md() → _markitdown_adapter.py → MarkItDown → outputs/md/*.md`。页面只依赖汇文的 ArkTS 服务；Python 调用方只使用 `huiwen_converter` 导出的格式接口，第三方库的调用集中在适配文件。`checkPython()` 仍可用于内部自检。规划中的 Qt UI 面向 Windows、macOS，可复用同一 Python API。
+当前 Qt 转换链为 `ConvertButton → Qt ConversionService.convertPdfToMd() → PythonRunner → convert_pdf.py → huiwen_converter.pdf_to_md() → MarkItDown → outputs/md/*.md`。Python API 与第三方库适配保持原有边界。原 ArkTS 转换接口仍保留，但首页按钮原来的即时转换调用已注释。
 
-仓库中的 `third_party/markitdown` 是固定版本的上游源码，**不会把整个 Git 仓库装进应用**。`pack_python_hnp.sh` 仅把运行所需的 `markitdown/`、`huiwen_converter/`、Python 依赖及其原生 `.so` 放入 HNP 的 `lib/python3.14/site-packages/`，固定命令脚本放在 `share/huiwen/`；HNP 同时包含 Python 解释器。构建 HAP 时，`libhuiwen_native.so` 进入 HAP，生成的 `huiwen_python.hnp` 也随 HAP 分发。ArkTS 不能直接导入 HNP 内的 Python 函数，必须经应用自己的 NAPI 桥接调用。
+鸿蒙跳转由 `HomePage.ets → startAbility(QtWorkspaceAbility) → QPA.startQtApplication() → libhuiwen_qt.so/main()` 完成。Qt 窗口实际显示后通过 NAPI 线程安全回调通知新 Ability；新 Ability 通过应用 EventHub 通知首页，只有发起跳转的首页消费一次通知并调用 `terminateSelf()`。这只结束首页 Ability，不结束应用进程。
+
+当前 QPA 固定加载 `pages/Index`，不能让该路由同时作为 ArkTS 首页。`EntryAbility` 加载独立的 `pages/HomePage`；`Index.ets` 仅创建 Qt 的 NODE 类型 XComponent。`QtWorkspaceAbility.newLocalStorage()` 提供存储，QPA 写入 `idName` 并传给承载页。若在承载页放首页事件监听，会在 Qt 就绪时把 Qt Ability 也关闭；缺少存储方法则会产生 `newLocalStorage not found`、`Need object` 等日志。
+
+文件选择链为 `SourceDocumentView → SandboxService → QtBridge → QtWorkspaceAbility → DocumentStore`。Qt 请求进入 ArkTS 线程处理；结果经 NAPI 投递到 Qt 线程，不跨线程直接操作界面。新 Ability 使用自己的 Context，首页关闭后文件选择仍可继续。
+
+仓库中的 `third_party/markitdown` 是固定版本的上游源码，**不会把整个 Git 仓库装进应用**。`pack_python_hnp.sh` 仅把运行所需的 `markitdown/`、`huiwen_converter/`、Python 依赖及其原生 `.so` 放入 HNP 的 `lib/python3.14/site-packages/`，固定命令脚本放在 `share/huiwen/`；HNP 同时包含 Python 解释器。构建 HAP 时，`libhuiwen_native.so`、`libhuiwen_qt.so` 和最小 Qt 运行库进入 HAP，生成的 `huiwen_python.hnp` 也随 HAP 分发。ArkTS 不能直接导入 HNP 内的 Python 函数，必须经应用自己的 NAPI 桥接调用。
 
 ### 接口边界
 
@@ -96,13 +117,20 @@ HuiWenMCP/
 | --- | --- | --- |
 | PDF 预览 | `files/inputs/pdf/<唯一编号>.pdf` | 打开系统选择器、复制文件、留在首页 |
 | MD 预览 | `files/inputs/md/<唯一编号>.md`（选择 `.markdown` 时保留该后缀） | 打开系统选择器、复制文件、留在首页 |
-| PDF 转 MD | 输入：`files/inputs/pdf/<唯一编号>.pdf`；输出：`files/outputs/md/<原文件名>-<唯一编号>.md` | 打开系统选择器、复制输入、转换后显示 MD 路径或错误，留在首页 |
+| PDF 转 MD | 输入：`files/inputs/pdf/<唯一编号>.pdf`；输出：`files/outputs/md/<原文件名>-<唯一编号>.md` | 首页打开 Qt；Qt 输入区域选取文件，点击转化后显示 MD 卡片 |
 
-系统选择器返回的 URI 只用于读取选中文件；应用内部后续使用沙箱副本路径。转换成功后才生成非空 `.md` 文件并显示路径；文字无法提取的扫描件会提示需要 OCR，不生成空结果。本阶段不跳转预览页。
+系统选择器返回的 URI 只用于读取选中文件；应用内部后续使用沙箱副本路径。转换成功后才生成非空 `.md` 文件并显示路径；文字无法提取的扫描件会提示需要 OCR，不生成空结果。本阶段不渲染文件内容。MD 卡片先尝试让系统文件管理器打开 `outputs/md/`；系统不允许显示应用私有目录时，回退系统保存选择器导出 MD 副本。这是访问限制下的回退操作，不改变应用内输出路径；实际定位能力需真机验证。
 
 ## 本地构建
 
-工程当前配置为 HarmonyOS PC、`arm64-v8a`，目标 SDK 为 `6.1.1(24)`。首次克隆后，将 `build-profile.example.json5` 复制为本机的 `build-profile.json5`，需要安装到设备时再在 DevEco Studio 配置签名。鸿蒙模块的 NAPI `.so` 由 CMake 从源码构建，无需下载 Qt 运行库。
+工程当前配置为 HarmonyOS PC、`arm64-v8a`，目标 SDK 为 `6.1.1(24)`。首次克隆后，将 `build-profile.example.json5` 复制为本机的 `build-profile.json5`，需要安装到设备时再在 DevEco Studio 配置签名。鸿蒙模块的 NAPI `.so` 由 CMake 从源码构建，Qt 运行库从本机鸿蒙 Qt 5.15.12 SDK 复制。配置方式任选其一：
+
+```properties
+# 被 Git 忽略的 local.properties，使用你自己的 SDK 绝对路径
+qt.sdk.dir=/绝对路径/Qt5.15.12-ohos17-arm64-v8a
+```
+
+或为构建进程设置 `QT_PREFIX`。CMake 只复制 Core、Gui、Widgets、Concurrent 与 QPA 五个运行库到 `entry/libs/arm64-v8a/`；不会上传整套 Qt。库应来自同一 ARM64 SDK。
 
 首次克隆时连同固定版本的 MarkItDown 子模块一起下载：
 
@@ -144,4 +172,22 @@ hvigorw assembleHap --mode module -p product=default -p module=entry@default
 - 新增功能时更新“当前状态”，区分已运行的能力与尚未接入的入口。
 - 调整模块、原生库或打包方式时更新“工程结构”和“本地构建”。
 - 不把生成的 HAP、构建缓存或本机 SDK 路径写成跨机器通用的依赖。
-- 不提交 `entry/libs/` 下的本机 Qt 运行库；鸿蒙端需要的 NAPI `.so` 在构建时生成。
+- 不提交 `entry/libs/` 下的本机 Qt 运行库；NAPI 与 Qt 应用 `.so` 从源码构建，Qt 运行库从本机 SDK 复制。
+
+## Qt 工作区验收
+
+本阶段页面入口为 `qt_app/src/workspace/ConversionWindow.cpp`。未创建后续侧栏目录；新增侧栏时使用 `sidebars/`，避免与输入/输出区域混淆。
+
+1. 点击 ArkTS 首页“PDF 转 MD”，Qt 默认最大化并保留系统标题栏、窗口边框及窗口控制按钮；查看 `QtWorkspace` 标签下的 `HUIWEN_QT_START`、`HUIWEN_QT_READY`，确认只有 `EntryAbility` 随后结束，`QtWorkspaceAbility` 保持运行；不应再出现 `newLocalStorage not found`、`Need object`。
+2. 左右文档区域占满状态栏上方的可用高度，底部状态栏保持紧凑；还原窗口并调整大小时布局应同步变化。悬停中间细线出现水平分割光标；拖动改变两侧宽度，底部小型“转化”按钮保持居中在线上。
+3. 点击左侧虚线加号选择 PDF，取消应保留原状态；选取后显示 PDF 占位图和原文件名。
+4. 点击“转化”，操作期间不能重复选择或提交。成功后右侧显示 MD 占位图和输出文件名；失败在底部显示错误。再选一个 PDF 检查重复导入。
+5. 点击 MD 卡片检查系统文件管理器定位；若系统拒绝私有目录，检查保存选择器能导出同一个 MD 文件。
+
+HAP 包结构校验：
+
+```sh
+python3 packaging/ohos/check_workspace_hap.py entry/build/default/outputs/default/entry-default-signed.hap
+```
+
+Windows/macOS 的同一 Widgets 源码提供桌面入口，尚未编译验证和制作安装包。桌面转换需安装同一 Python 依赖、设置 `PYTHONPATH` 为仓库的 `converter/`，`HUIWEN_CONVERT_SCRIPT` 为 `converter/pdf2md/convert.py` 的绝对路径；可用 `HUIWEN_PYTHON` 指定解释器。

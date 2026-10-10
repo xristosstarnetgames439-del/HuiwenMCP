@@ -1,6 +1,8 @@
 /node_modules
 /oh_modules
 /local.properties
+# 本地项目开发记录，不进入 Git。
+/docs/项目开发记录/
 # 本机签名配置由安全模板复制生成，不进入 Git。
 /build-profile.json5
 # 鸿蒙端原生库由源码构建，保留本机旧 Qt 运行库但不推送。
