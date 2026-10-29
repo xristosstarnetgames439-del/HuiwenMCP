@@ -5,6 +5,7 @@ import Want from '@ohos.app.ability.Want';
 import hilog from '@ohos.hilog';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { initializeHomeAppearance } from '../utils/HomeAppearance';
+import nativeBridge from 'libhuiwen_native.so';
 
 
 export default class EntryAbility extends UIAbility {
@@ -26,6 +27,12 @@ export default class EntryAbility extends UIAbility {
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam) {
     super.onCreate(want, launchParam)
+    // 业务 pyz 随 HAP 更新，部署到缓存后供共享 PythonRunner 使用。
+    try {
+      nativeBridge.configurePython(this.context.resourceManager, this.context.cacheDir);
+    } catch (error) {
+      hilog.error(this.domain, this.tag, 'PYTHON_BUNDLE_FAILED: %{public}s', (error as Error).message);
+    }
     try {
       initializeHomeAppearance(this.context);
     } catch (error) {

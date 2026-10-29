@@ -28,7 +28,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "OHOS")
         "${workspace_root}/src/platform/harmony/harmony_sandbox_napi.cpp")
 endif()
 target_include_directories(huiwen_native PRIVATE "${workspace_root}/src")
-target_link_libraries(huiwen_native PRIVATE ace_napi.z.so hilog_ndk.z.so Qt5::Core)
+target_link_libraries(huiwen_native PRIVATE ace_napi.z.so hilog_ndk.z.so rawfile.z.so Qt5::Core)
 add_subdirectory("${workspace_root}" "${CMAKE_CURRENT_BINARY_DIR}/qt_app")
 
 # 更新本项目生成的库；Hvigor 同时从原生输出和 libs 收集运行库。

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 将已解压的鸿蒙 arm64 Python 运行时打成应用私有 HNP。
+# 只打包稳定的鸿蒙 Python 环境与目标依赖；业务源码由独立 pyz 随 HAP 分发。
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
@@ -10,17 +10,12 @@ fi
 runtime_dir=$(cd "$1" && pwd)
 project_dir=$(cd "$(dirname "$0")/../.." && pwd)
 python_bin="$runtime_dir/bin/python3"
-markitdown_src="$project_dir/third_party/markitdown/packages/markitdown/src/markitdown"
 if [[ ! -x "$python_bin" || ! -d "$runtime_dir/lib" ]]; then
   echo "运行时目录必须包含可执行的 bin/python3 和 lib/" >&2
   exit 2
 fi
 if [[ $(file -L -b "$python_bin") != *"ARM aarch64"* ]]; then
   echo "bin/python3 不是鸿蒙 arm64 ELF，请勿使用本机 macOS Python" >&2
-  exit 2
-fi
-if [[ ! -f "$markitdown_src/__init__.py" ]]; then
-  echo "缺少 MarkItDown 源码；请先运行 git submodule update --init" >&2
   exit 2
 fi
 
@@ -35,16 +30,12 @@ if [[ ! -d "$runtime_dir/lib/python3.14/site-packages" ]]; then
   exit 2
 fi
 
-# 成品只依赖打包输入；ArkTS、Qt 和 PDFium 修改不会使 Python HNP 失效。
+# 环境指纹不包含转换 API、MarkItDown、转换入口及业务补丁。
 hnp_file="$project_dir/hnp/arm64-v8a/huiwen_python.hnp"
 package_stamp="$project_dir/.hnp-cache/hnp-build.sha256"
 package_key=$("${HOST_PYTHON:-python3}" - \
-  "$runtime_dir" "$markitdown_src" "$project_dir/converter/huiwen_converter" \
-  "$project_dir/converter/pdf2md/convert.py" \
-  "$project_dir/third_party/markitdown/LICENSE" \
-  "$project_dir/third_party/markitdown/packages/markitdown/ThirdPartyNotices.md" \
+  "$runtime_dir" \
   "$project_dir/packaging/ohos/requirements-pdf.txt" \
-  "$project_dir/packaging/ohos/markitdown-no-magika.patch" \
   "$project_dir/packaging/ohos/python_smoke.py" "$project_dir/packaging/ohos/hnp.json" \
   "$project_dir/packaging/ohos/pack_python_hnp.sh" "$hnpcli" <<'PY'
 import hashlib
@@ -92,7 +83,7 @@ cp -pR "$runtime_dir/." "$stage/"
 mkdir -p "$stage/share/huiwen" "$project_dir/hnp/arm64-v8a"
 site_packages="$stage/lib/python3.14/site-packages"
 
-# 重建 HNP 时复用锁定的目标依赖，业务及 fork 源码重新复制。
+# 重建环境 HNP 时复用锁定的目标依赖。
 requirements="$project_dir/packaging/ohos/requirements-pdf.txt"
 dependency_key=$(shasum -a 256 "$requirements" | cut -d ' ' -f 1)
 cache_root="$project_dir/.hnp-cache/cp314-musllinux_1_2_aarch64"
@@ -115,20 +106,12 @@ else
 fi
 cp -R "$dependency_cache/." "$site_packages/"
 rm -f "$site_packages/.complete"
-# 防止运行时目录中的旧源码与本次源码合并。
+# 环境包不保留旧转换代码，业务必须来自当前 HAP 的 pyz。
 rm -rf "$site_packages/markitdown" "$site_packages/huiwen_converter"
-cp -R "$markitdown_src" "$site_packages/markitdown"
-patch -s -d "$site_packages" -p1 < "$project_dir/packaging/ohos/markitdown-no-magika.patch"
-# 汇文公开 API 与第三方库同处 HNP；页面只通过 NAPI 调用固定命令。
-cp -R "$project_dir/converter/huiwen_converter" "$site_packages/huiwen_converter"
-mkdir -p "$stage/share/licenses/markitdown"
-cp "$project_dir/third_party/markitdown/LICENSE" "$stage/share/licenses/markitdown/LICENSE"
-cp "$project_dir/third_party/markitdown/packages/markitdown/ThirdPartyNotices.md" \
-  "$stage/share/licenses/markitdown/ThirdPartyNotices.md"
+rm -f "$stage/share/huiwen/convert_pdf.py"
 cp "$project_dir/packaging/ohos/python_smoke.py" "$stage/share/huiwen/python_smoke.py"
-cp "$project_dir/converter/pdf2md/convert.py" "$stage/share/huiwen/convert_pdf.py"
 cp "$project_dir/packaging/ohos/hnp.json" "$stage/hnp.json"
-echo "[HUIWEN_HNP] PACK current Python sources"
+echo "[HUIWEN_HNP] PACK Python environment"
 "$hnpcli" pack -i "$stage" -o "$pack_output"
 if [[ ! -s "$pack_output/huiwen_python.hnp" ]]; then
   echo "HNP 打包未生成有效产物，保留旧文件但停止构建" >&2

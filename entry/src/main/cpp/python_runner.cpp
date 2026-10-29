@@ -1,16 +1,26 @@
 /*
- * 汇文MCP 的私有 HNP Python 进程启动器。
- * 定位应用自带解释器，异步任务中执行固定脚本并收集运行结果。
+ * 汇文MCP 的 Python 进程启动器。
+ * HNP 只提供解释器与依赖；转换代码从 HAP 内置 pyz 部署到缓存后执行。
  */
 #include "python_runner.h"
 #include "hilog/log.h"
+#include <QCryptographicHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 
 #include <array>
 #include <cerrno>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <iterator>
+#include <limits>
+#include <memory>
+#include <mutex>
+#include <rawfile/raw_file.h>
+#include <rawfile/raw_file_manager.h>
+#include <sys/stat.h>
 #include <spawn.h>
 #include <stdexcept>
 #include <string>
@@ -25,6 +35,8 @@ namespace
 constexpr char kBundleName[] = "cn.com.HuiWenMCP";
 constexpr char kPackageDir[] = "huiwen_python.org/huiwen_python_1.0.0";
 constexpr char kResultPrefix[] = "HUIWEN_CONVERT_RESULT ";
+std::mutex bundleMutex;
+std::string businessBundle;
 
 void CaptureConversionResult(const char *data, size_t size, std::string &pending, bool &skipLine,
                              std::string &result)
@@ -103,17 +115,23 @@ std::string FindPythonRoot()
     }
     throw std::runtime_error("未找到私有 HNP 解释器；请确认 huiwen_python.hnp 已随 HAP 安装。HNP_PRIVATE_HOME=" + base);
 }
-std::string RunPythonScript(const char *scriptName, const std::vector<std::string> &paths, const char *successMarker,
+std::string RunPythonScript(bool convert, const std::vector<std::string> &paths, const char *successMarker,
                             const char *action, int *exitCode = nullptr)
 {
     const std::string root = FindPythonRoot();
     const std::string python = root + "/bin/python3";
-    const std::string script = root + "/share/huiwen/" + scriptName;
+    std::string script;
+    {
+        std::lock_guard<std::mutex> lock(bundleMutex);
+        script = convert ? businessBundle : root + "/share/huiwen/python_smoke.py";
+    }
+    if (script.empty())
+        throw std::runtime_error("Python 业务包尚未初始化，请重新打开应用。");
     OH_LOG_Print(LOG_APP, LOG_INFO, 0x3F00, "HuiwenPython", "PYTHON_START executable=%{public}s script=%{public}s",
                  python.c_str(), script.c_str());
     if (access(script.c_str(), R_OK) != 0)
     {
-        throw std::runtime_error("HNP 中缺少脚本: " + script);
+        throw std::runtime_error("缺少 Python 执行入口: " + script);
     }
 
     int outputPipe[2];
@@ -230,9 +248,74 @@ std::string RunPythonScript(const char *scriptName, const std::vector<std::strin
 }
 } // namespace
 
+// 首页和 Qt Ability 都注册自己的应用资源；按内容命名，旧任务不会被新包覆盖。
+void ConfigurePythonBundle(napi_env env, napi_value resources, const std::string &cacheDir)
+{
+    std::lock_guard<std::mutex> lock(bundleMutex);
+    businessBundle.clear();
+    std::unique_ptr<NativeResourceManager, decltype(&OH_ResourceManager_ReleaseNativeResourceManager)>
+        manager(OH_ResourceManager_InitNativeResourceManager(env, resources),
+                OH_ResourceManager_ReleaseNativeResourceManager);
+    if (!manager)
+        throw std::runtime_error("无法初始化 Python 业务包资源。");
+    std::unique_ptr<RawFile, decltype(&OH_ResourceManager_CloseRawFile)> resource(
+        OH_ResourceManager_OpenRawFile(manager.get(), "python/huiwen_converter.pyz"),
+        OH_ResourceManager_CloseRawFile);
+    if (!resource)
+        throw std::runtime_error("HAP 中缺少 python/huiwen_converter.pyz，请重新构建安装。");
+    const auto size = OH_ResourceManager_GetRawFileSize(resource.get());
+    if (size <= 0 || size > std::numeric_limits<int>::max())
+        throw std::runtime_error("Python 业务包大小无效。");
+    QByteArray bytes(static_cast<int>(size), '\0');
+    for (int offset = 0; offset < bytes.size();)
+    {
+        const int read =
+            OH_ResourceManager_ReadRawFile(resource.get(), bytes.data() + offset, bytes.size() - offset);
+        if (read <= 0)
+            throw std::runtime_error("读取 Python 业务包失败。");
+        offset += read;
+    }
+    const std::string directory = cacheDir + "/huiwen-python";
+    if (mkdir(directory.c_str(), 0700) != 0 && errno != EEXIST)
+        throw std::runtime_error("无法创建 Python 业务缓存目录。");
+    const auto digest = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex().toStdString();
+    const std::string target = directory + "/" + digest + ".pyz";
+    std::ifstream saved(target, std::ios::binary);
+    const std::string existing((std::istreambuf_iterator<char>(saved)), std::istreambuf_iterator<char>());
+    if (existing != std::string(bytes.constData(), static_cast<size_t>(bytes.size())))
+    {
+        std::string temporary = directory + "/.bundle.XXXXXX";
+        const int fd = mkstemp(temporary.data());
+        if (fd < 0)
+            throw std::runtime_error("无法创建 Python 业务缓存文件。");
+        int offset = 0;
+        while (offset < bytes.size())
+        {
+            const auto written = write(fd, bytes.constData() + offset, bytes.size() - offset);
+            if (written < 0 && errno == EINTR)
+                continue;
+            if (written <= 0)
+            {
+                close(fd);
+                unlink(temporary.c_str());
+                throw std::runtime_error("写入 Python 业务缓存失败。");
+            }
+            offset += static_cast<int>(written);
+        }
+        if (close(fd) != 0 || rename(temporary.c_str(), target.c_str()) != 0)
+        {
+            unlink(temporary.c_str());
+            throw std::runtime_error("更新 Python 业务缓存失败。");
+        }
+    }
+    businessBundle = target;
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0x3F00, "HuiwenPython", "PYTHON_BUNDLE sha256=%{public}s path=%{public}s",
+                 digest.c_str(), target.c_str());
+}
+
 std::string RunPythonSmoke()
 {
-    return RunPythonScript("python_smoke.py", {}, "HUIWEN_PYTHON_OK", "Python 自检");
+    return RunPythonScript(false, {}, "HUIWEN_PYTHON_OK", "Python 自检");
 }
 
 PdfConversionResult RunPdfConversionResult(const std::string &inputPath, const std::string &outputPath)
@@ -240,8 +323,8 @@ PdfConversionResult RunPdfConversionResult(const std::string &inputPath, const s
     if (inputPath.empty() || outputPath.empty())
         return {1001, "转化失败：文件路径不正确，请重新选择 PDF。", {}};
     int exitCode = -1;
-    const std::string output = RunPythonScript("convert_pdf.py", {inputPath, outputPath},
-                                               "HUIWEN_CONVERT_OK", "PDF 转换", &exitCode);
+    const std::string output =
+        RunPythonScript(true, {inputPath, outputPath}, "HUIWEN_CONVERT_OK", "PDF 转换", &exitCode);
     if (output.compare(0, sizeof(kResultPrefix) - 1, kResultPrefix) != 0)
         return {2001, "转化失败：转换进程未返回结果，请重新转化。", {}};
     QJsonParseError parseError;

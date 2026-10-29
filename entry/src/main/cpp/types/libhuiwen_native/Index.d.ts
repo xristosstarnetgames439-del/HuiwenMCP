@@ -1,4 +1,5 @@
 // ArkTS 调用 libhuiwen_native.so 时使用的类型声明。
+import { resourceManager } from '@kit.LocalizationKit';
 export interface HarmonySandboxDocument {
   name: string;
   kind: string;
@@ -12,6 +13,8 @@ export interface HarmonySandboxDocument {
 
 interface HuiwenNative {
   ping(): string;
+  // 启动期从应用资源部署内置转换 pyz，不接收外部脚本。
+  configurePython(resources: resourceManager.ResourceManager, cacheDir: string): void;
   checkPython(): Promise<string>;
   // 异步把沙箱 PDF 写成 MD；成功返回输出路径，失败拒绝 Promise。
   convertPdf(inputPath: string, outputPath: string): Promise<string>;

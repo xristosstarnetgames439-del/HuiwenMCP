@@ -1,4 +1,4 @@
-"""HNP 固定的 PDF 命令入口；业务接口由 huiwen_converter.pdf_to_md 提供。"""
+"""PDF 固定命令入口；鸿蒙作为 pyz 的 __main__，桌面可直接执行，业务 API 保持不变。"""
 
 import errno
 import json

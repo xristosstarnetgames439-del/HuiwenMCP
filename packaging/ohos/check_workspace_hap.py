@@ -1,5 +1,6 @@
-"""检查工作区 HAP 的原生库、Ability 与 Python HNP，避免仅编译成功却漏打运行依赖。"""
+"""检查工作区 HAP 的原生库、Ability、Python 环境及业务包，避免漏打运行依赖。"""
 
+import io
 import json
 import sys
 import zipfile
@@ -25,10 +26,15 @@ def check_hap(path: Path) -> None:
         assert {"EntryAbility", "QtWorkspaceAbility"} <= abilities
         assert {"package": "huiwen_python.hnp", "type": "private"} in module["hnpPackages"]
         assert len(hap.read("hnp/arm64-v8a/huiwen_python.hnp")) > 0
+        with zipfile.ZipFile(io.BytesIO(hap.read("resources/rawfile/python/huiwen_converter.pyz"))) as bundle:
+            assert bundle.testzip() is None, "Python 业务包校验失败"
+            for name in ("__main__.py", "huiwen_converter/__init__.py", "markitdown/__init__.py",
+                         "licenses/markitdown/LICENSE", "licenses/markitdown/ThirdPartyNotices.md"):
+                assert name in bundle.namelist(), f"Python 业务包缺失入口或许可：{name}"
         for name in ("qt", "pdfium"):
             prefix = f"resources/rawfile/third_party_licenses/{name}/"
             assert any(entry.startswith(prefix) and "LICENSE" in entry for entry in hap.namelist()), name
-    print("HAP_CHECK_OK: 8 个 ARM64 原生库、两个 Ability、Python HNP 与 Qt/PDFium 许可证")
+    print("HAP_CHECK_OK: 8 个 ARM64 原生库、两个 Ability、Python 环境 HNP、业务 pyz 与许可材料")
 
 
 if __name__ == "__main__":

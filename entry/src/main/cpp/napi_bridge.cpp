@@ -123,6 +123,34 @@ static bool ReadPath(napi_env env, napi_value value, std::string &path)
     return path.find('\0') == std::string::npos;
 }
 
+// 启动期配置 API：只从应用内置 rawfile 部署业务包，转换接口及参数保持不变。
+static napi_value ConfigurePython(napi_env env, napi_callback_info info)
+{
+    size_t count = 2;
+    napi_value values[2];
+    napi_valuetype type;
+    std::string cacheDir;
+    if (napi_get_cb_info(env, info, &count, values, nullptr, nullptr) != napi_ok || count != 2 ||
+        napi_typeof(env, values[0], &type) != napi_ok || type != napi_object ||
+        !ReadPath(env, values[1], cacheDir) || cacheDir.front() != '/')
+    {
+        napi_throw_type_error(env, nullptr, "需要应用 ResourceManager 和绝对缓存目录");
+        return nullptr;
+    }
+    try
+    {
+        ConfigurePythonBundle(env, values[0], cacheDir);
+    }
+    catch (const std::exception &error)
+    {
+        napi_throw_error(env, nullptr, error.what());
+        return nullptr;
+    }
+    napi_value result;
+    napi_get_undefined(env, &result);
+    return result;
+}
+
 // 项目对 ArkTS 暴露的 PDF 转 MD API：只接收输入、输出路径并异步执行。
 static napi_value ConvertPdf(napi_env env, napi_callback_info info)
 {
@@ -149,6 +177,7 @@ static napi_value Init(napi_env env, napi_value exports)
 {
     napi_property_descriptor descriptors[] = {
         {"ping", nullptr, Ping, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"configurePython", nullptr, ConfigurePython, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"checkPython", nullptr, CheckPython, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"convertPdf", nullptr, ConvertPdf, nullptr, nullptr, nullptr, napi_default, nullptr},
     };

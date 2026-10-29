@@ -31,7 +31,7 @@ const prepareNativeDependenciesPlugin = {
   }
 };
 
-// 每次 Run 检查 Markdown Web 资源，内容相同则保留产物和时间戳；复用 Hvigor 的 Node。
+// 每次 Run 准备 Markdown 与 Python 业务资源，内容相同则保留产物和时间戳。
 const prepareMarkdownResourcesPlugin = {
   pluginId: 'huiwen.prepare-markdown-resources',
   apply(node: any) {
@@ -50,6 +50,11 @@ const prepareMarkdownResourcesPlugin = {
         const pythonSetting =
           process.env.HOST_PYTHON ?? properties.match(/^\s*python\.host\.path\s*=\s*(.+)$/m)?.[1].trim() ?? 'python3';
         const python = pythonSetting.includes(path.sep) ? path.resolve(projectRoot, pythonSetting) : pythonSetting;
+        // 业务 pyz 独立准备，源码变化不再触发环境 HNP 重打包。
+        execFileSync(python, [path.join(projectRoot, 'packaging/ohos/build_python_bundle.py')], {
+          cwd: projectRoot,
+          stdio: 'inherit'
+        });
         execFileSync(python, [path.join(projectRoot, 'packaging/ohos/prepare_cef_preview.py')], {
           cwd: projectRoot,
           stdio: 'inherit'
@@ -161,6 +166,10 @@ const repackHapWithHnpPlugin = {
         const entries = execFileSync('unzip', ['-Z1', outPath], { encoding: 'utf8' }).split(/\r?\n/);
         if (!entries.includes(hnpEntry)) {
           throw new Error(`未签名 HAP 中缺少 ${hnpEntry}`);
+        }
+        const pythonBundleEntry = 'resources/rawfile/python/huiwen_converter.pyz';
+        if (!entries.includes(pythonBundleEntry)) {
+          throw new Error(`未签名 HAP 中缺少 ${pythonBundleEntry}`);
         }
       }
     });

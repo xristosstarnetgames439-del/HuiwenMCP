@@ -21,6 +21,8 @@
 /third_party/markdown/sources/
 # Markdown Web 资源每次 Run 生成，随 HAP 分发，不进入 Git。
 /entry/src/main/resources/rawfile/markdown/
+# Python 业务 pyz 由源码生成，随 HAP 分发，不进入 Git。
+/entry/src/main/resources/rawfile/python/
 # CEF 核心数据由项目内 SDK 同步，保持唯一来源。
 /entry/src/main/resources/resfile/
 /.native-tools/

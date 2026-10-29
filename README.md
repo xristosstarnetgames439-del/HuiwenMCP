@@ -23,6 +23,7 @@
 - 输入文件卡片通过 DocumentStore 获取系统选取授权，再经 NAPI 调用 C++ harmony_sandbox 完成沙箱复制和路径安排。两侧操作统一到顶部“文件”菜单：查看模式默认预览，可切换为占位图；左侧由 PDFium 显示多页 PDF，右侧已有结果时由 CEF 显示 MD。转换成功自动切到预览并隐藏转化按钮；更换文件保留当前查看方式，清空旧结果并恢复按钮，取消选择保留原状态；尚未生成 MD 时仍显示等待提示。PDFium 后台串行渲染可见页，连续尺寸变化合并请求；位图缓存上限为 64 MiB，超长页面降低采样分辨率。Qt ConversionService 仍复用 PythonRunner 转换。本次默认预览及按钮显隐调整仅做格式检查，尚未编译、打包或真机验收。
 - 原有 Python HNP 自检与 PDF 转换已由用户在真机验证成功。新增 Qt 窗口交接、选择与结果位置操作需要真机验收。
 - 汇文 Python 包只公开 `pdf_to_md()`；后续格式在依赖和设备转换通过后再增加。
+- Python 部署拆成稳定环境 HNP 与业务 `.pyz`：修改汇文 API、MarkItDown 源码或业务补丁只更新 pyz；修改解释器、目标依赖及环境打包配置才重建 HNP。本次拆分仅做语法和格式检查，首次迁移及设备转换尚待验证。
 
 ## 工程结构
 
@@ -50,7 +51,7 @@ HuiWenMCP/
 │   │   └── cpp/
 │   │       ├── CMakeLists.txt          [已有] 原生库构建配置
 │   │       ├── napi_bridge.cpp        [已有] ArkTS → C++ 的 NAPI 接口
-│   │       ├── python_runner.cpp/.h   [已有] 定位 HNP、启动固定自检或转换脚本
+│   │       ├── python_runner.cpp/.h   [已有] 部署内置 pyz 到缓存，使用 HNP 解释器执行
 │   │       └── types/                 [已有] 原生模块的 ArkTS 类型声明
 │   ├── libs/arm64-v8a/                [生成] Qt、PDFium 与本项目动态库，不进入 Git
 │   │   └── libQt5{Core,Gui,Widgets,Concurrent}.so、QPA、libpdfium.so、libhuiwen_{native,qt}.so
@@ -62,7 +63,7 @@ HuiWenMCP/
 │   │   ├── __init__.py                 [已有] 仅导出已实现的 pdf_to_md()
 │   │   ├── api.py                      [已有] 路径校验、写入 MD、返回输出路径
 │   │   └── _markitdown_adapter.py      [已有] 唯一直接调用 MarkItDown 的适配文件
-│   └── pdf2md/convert.py              [已有] HNP 固定的 PDF 命令入口
+│   └── pdf2md/convert.py              [已有] pyz 的 __main__，也可供桌面直接执行
 ├── qt_app/                            [已有] Qt Widgets 工作区，鸿蒙共享库/桌面可执行入口
 │   ├── CMakeLists.txt                 构建 huiwen_qt 并链接 PDFium；新增预览尚未编译验证
 │   ├── main.cpp                       默认最大化并保留系统边框，显示成功后通知结束原首页
@@ -92,13 +93,17 @@ HuiWenMCP/
 ├── hnp/arm64-v8a/                     [生成] 鸿蒙 Python 运行环境，不进入 Git
 │   └── huiwen_python.hnp               私有 HNP 归档，内部包含：
 │       ├── bin/python3                 Python 解释器
-│       ├── lib/python3.14/site-packages/
-│       │   ├── huiwen_converter/       汇文对外 Python API
-│       │   ├── markitdown/             第三方运行源码，不含其 Git 仓库
-│       │   └── PDF 依赖及原生 .so       pdfplumber、Pillow、pdfium 等
-│       └── share/huiwen/convert_pdf.py NAPI 启动的固定命令入口
+│       ├── lib/python3.14/site-packages/ PDF 依赖及原生 .so，不含汇文 API 和 MarkItDown
+│       └── share/huiwen/python_smoke.py 固定的解释器自检入口
+├── entry/src/main/resources/rawfile/python/ [生成] 独立业务包，不进入 Git
+│   └── huiwen_converter.pyz
+│       ├── __main__.py                来自 converter/pdf2md/convert.py
+│       ├── huiwen_converter/          汇文公开 API 与适配实现
+│       ├── markitdown/                已应用业务补丁的第三方 Python 源码及包内资源
+│       └── licenses/markitdown/       MIT 许可与第三方声明
 ├── packaging/                         [部分已有] 各平台打包脚本和配置
 │   ├── ohos/                           [已有] HNP 打包脚本、依赖锁定文件及上游补丁
+│   │   └── build_python_bundle.py      生成确定性业务 pyz，不变则保留成品与时间戳
 │   ├── windows/
 │   └── macos/
 ├── tests/pdf_samples/                 [规划] 文字、双栏、表格等转换样本
@@ -113,7 +118,7 @@ HuiWenMCP/
 └── README.md                          [已有] 项目状态与维护说明
 ```
 
-当前 Qt 转换链为 `ConvertButton → Qt ConversionService.convertPdfToMd() → PythonRunner → convert_pdf.py → huiwen_converter.pdf_to_md() → MarkItDown → convert/<时间戳_文件名>/output/*.md`。Python API 与第三方库适配保持原有边界。原 ArkTS 转换接口仍保留；首页通过“文档转化 → PDF→MD”进入 Qt，不再选文件或直接执行转换。
+当前 Qt 转换链为 `ConvertButton → Qt ConversionService.convertPdfToMd() → PythonRunner → HNP Python 执行缓存 pyz/__main__.py → huiwen_converter.pdf_to_md() → MarkItDown → convert/<时间戳_文件名>/output/*.md`。Python API 与第三方库适配保持原有边界。原 ArkTS 转换接口仍保留；首页通过“文档转化 → PDF→MD”进入 Qt，不再选文件或直接执行转换。
 
 鸿蒙跳转由 `HomePage.ets → startAbility(QtWorkspaceAbility) → QPA.startQtApplication() → libhuiwen_qt.so/main()` 完成。Qt 窗口实际显示后通过 NAPI 线程安全回调通知新 Ability；新 Ability 通过应用 EventHub 通知首页，只有发起跳转的首页消费一次通知并调用 `terminateSelf()`。这只结束首页 Ability，不结束应用进程。
 
@@ -125,7 +130,11 @@ QPA 在进程内只启动一次 Qt 主循环，CEF 引擎也保留到应用退�
 
 文件选择链为 `SourceDocumentView → SandboxService → QtBridge → QtWorkspaceAbility → DocumentStore`。Qt 请求进入 ArkTS 线程处理；结果经 NAPI 投递到 Qt 线程，不跨线程直接操作界面。新 Ability 使用自己的 Context，首页关闭后文件选择仍可继续。DocumentStore 只保留 Picker、URI 授权打开及关闭；目录、时间戳、命名、最近使用和缓存规则由通用 C++ `SandboxStore` 负责；鸿蒙授权 fd 复制与适配由 `HarmonySandbox` 负责。
 
-仓库中的 `third_party/markitdown` 是固定版本的上游源码，**不会把整个 Git 仓库装进应用**。`pack_python_hnp.sh` 仅把运行所需的 `markitdown/`、`huiwen_converter/`、Python 依赖及其原生 `.so` 放入 HNP 的 `lib/python3.14/site-packages/`，固定命令脚本放在 `share/huiwen/`；HNP 同时包含 Python 解释器。构建 HAP 时，`libhuiwen_native.so`、`libhuiwen_qt.so` 和最小 Qt 运行库进入 HAP，生成的 `huiwen_python.hnp` 也随 HAP 分发。ArkTS 不能直接导入 HNP 内的 Python 函数，必须经应用自己的 NAPI 桥接调用。
+仓库中的 `third_party/markitdown` 固定源码版本，**不会把整个第三方 Git 仓库装进应用**。`pack_python_hnp.sh` 只部署 Python 解释器、目标依赖及其原生 `.so` 和自检脚本；`build_python_bundle.py` 把 `markitdown/`、`huiwen_converter/`、固定转换入口及许可材料装入独立 `.pyz`，应用 `markitdown-no-magika.patch`，不修改子模块源码。两个产物随同一个 HAP 分发；NAPI、Qt 应用和最小 Qt 运行库仍按原有方式部署。
+
+`EntryAbility` 和 `QtWorkspaceAbility` 在启动期调用 `configurePython(resourceManager, cacheDir)`。C++ 只读取固定的 `rawfile/python/huiwen_converter.pyz`，通过系统 ResourceManager 取出字节，以 SHA-256 命名保存到 `<应用 cacheDir>/huiwen-python/<sha256>.pyz`；缓存字节相同时不重写，缺失或内容不符时先写临时文件再替换。旧任务持有的旧版本文件不会在初始化新包时被覆盖，缓存可随应用缓存一起清理。
+
+转换继续使用 `convertPdf(inputPath, outputPath)` / `RunPdfConversionResult()`，由 HNP 的 `bin/python3 -B -u <缓存 pyz> <PDF> <MD>` 启动固定业务入口。Python 从 pyz 导入业务模块，从 HNP 的 site-packages 加载依赖和原生扩展；不回退到 HNP 中旧的转换源码，不接受外部脚本路径。`pdf_to_md()`、stdout 最后一行 JSON 协议、错误码和页面调用方式保持原有边界。自检仍执行 HNP 的 `python_smoke.py`。
 
 ### 接口边界
 
@@ -134,7 +143,8 @@ QPA 在进程内只启动一次 Qt 主循环，CEF 引擎也保留到应用退�
 | `converter/huiwen_converter/__init__.py` | `pdf_to_md(input_path, output_path) -> Path` | Python 公开业务接口；生成非空 MD 后返回路径，失败抛出异常。后续格式实现并验证后，才新增对应的显式接口。 |
 | `converter/huiwen_converter/_markitdown_adapter.py` | 内部 `pdf_to_markdown()` | 唯一直接导入 MarkItDown 的文件；不作为业务 API。 |
 | `entry/src/main/ets/services/ConversionService.ets` | `pdfToMd(inputPath, outputPath): Promise<string>` | ArkTS 页面调用；只转发到 NAPI，成功返回 MD 路径。 |
-| `entry/src/main/cpp/napi_bridge.cpp` | `convertPdf(inputPath, outputPath)` | 原生边界；异步启动 HNP 中的固定命令，不接受任意 Shell 命令。 |
+| `entry/src/main/cpp/napi_bridge.cpp` | `configurePython(resourceManager, cacheDir)` | 启动期部署应用内置 pyz；两个 Ability 都提供自己的 Context，不接受外部脚本路径。 |
+| `entry/src/main/cpp/napi_bridge.cpp` | `convertPdf(inputPath, outputPath)` | 原生边界；异步用 HNP 解释器执行当前业务 pyz，不接受任意 Shell 命令。 |
 
 ## 沙箱平台分层
 
@@ -263,6 +273,7 @@ python3 packaging/ohos/build_pdfium.py --sync
 DevEco Run 的顺序为 `PreBuild → PrepareNativeDependencies（恢复固定 Qt/CEF，再增量构建 PDFium）→ PrepareMarkdownResources → ConfigureCmake / CompileResource → BuildNativeWithNinja → ProcessLibs → PackageHap → RepackHapWithHnp → SignHap`。PDFium 编译和 Qt/NAPI 库同步在收集原生库之前完成；未改动的源码复用产物。这里只实现运行构建时更新，没有文件监听器，也没有在运行进程内卸载和替换 C++ 库。
 
 Markdown 另由 `PrepareMarkdownResources` 在 `PreBuild` 后、`ConfigureCmake`、`CompileResource` 和 `PackageHap` 前准备。
+同一资源准备任务还使用宿主 Python 执行 `build_python_bundle.py`：收集当前转换代码与许可、应用补丁、固定 zip 成员顺序/时间/权限；新旧 pyz 字节相同则输出 `[HUIWEN_PY_BUNDLE] CACHED` 并保留时间戳，否则原子替换并输出 `GENERATED`。不复制运行环境或目标 wheel，也不将本机字节码和原生扩展放入 pyz。
 它复用 Hvigor 的 Node/npm，首次 Run 联网按锁文件自动安装依赖，之后每次构建并比对
 `entry/src/main/resources/rawfile/markdown/` 下的 JS/CSS、页面、许可证和校验清单；仅原子替换内容变化的文件，其余保留时间戳，避免 Qt RCC 无意义重编。全部相同时输出 `[HUIWEN_MD] CACHED`，有更新时输出 `GENERATED`，资源随 HAP 收集；
 安装或构建失败会停止打包。通用预览模板还经 Qt qrc 编入工作区动态库，直接接收 MD 原文，
@@ -299,18 +310,19 @@ python.host.path=/绝对路径/宿主/python3
 也可用 `HUIWEN_PYTHON_RUNTIME` 和 `HOST_PYTHON` 环境变量覆盖上述配置。相对配置路径按项目根目录解析。正常点击 DevEco Run 并执行 HAP 构建安装时，签名前的 `RepackHapWithHnp` 任务先检查 HNP 输入，未变化时复用成品；首次准备、输入变化或产物缺失/校验不符时重新生成。仅热重载不保证执行此任务。也可手动执行同一检查和打包流程：
 
 ```sh
+python3 packaging/ohos/build_python_bundle.py
 bash packaging/ohos/pack_python_hnp.sh /绝对路径/python-3.14.6-ohos-arm64
 ```
 
-脚本使用本机 Python 的 pip 下载 `requirements-pdf.txt` 中锁定的鸿蒙 arm64/musl wheel。目标依赖按清单 SHA-256 缓存在被 Git 忽略的 `.hnp-cache/`，清单变化时重新安装。成品指纹保存在 `.hnp-cache/hnp-build.sha256`，覆盖运行时目录、MarkItDown 源码及许可、汇文 Python API、转换入口、自检脚本、依赖清单、补丁、`hnp.json`、打包脚本和 `hnpcli`；按文件内容、路径、权限及符号链接目标计算，并校验已有 HNP 的 SHA-256。ArkTS、Qt 和 PDFium 修改不会使 HNP 失效。
+脚本使用本机 Python 的 pip 下载 `requirements-pdf.txt` 中锁定的鸿蒙 arm64/musl wheel。目标依赖按清单 SHA-256 缓存在被 Git 忽略的 `.hnp-cache/`，清单变化时重新安装。环境成品指纹保存在 `.hnp-cache/hnp-build.sha256`，只覆盖运行时目录、目标依赖清单、自检脚本、`hnp.json`、环境打包脚本和 `hnpcli`；按文件内容、路径、权限及符号链接目标计算，并校验已有 HNP 的 SHA-256。汇文 API、MarkItDown、转换入口和业务补丁的修改只影响独立 pyz；ArkTS、Qt 和 PDFium 修改也不会使环境 HNP 失效。
 
-需要重建时才复制运行时、依赖和业务源码，应用 `markitdown-no-magika.patch` 并用 SDK 的 `hnpcli` 打包；成功后原子替换 `hnp/arm64-v8a/huiwen_python.hnp`，再写入新指纹。任一步失败仍停止构建。删除 `.hnp-cache/hnp-build.sha256` 或成品 HNP 可强制重打包；删除整个 `.hnp-cache/` 可连同目标依赖一起重新准备。首次启用本次缓存会重建一次，之后未变输入才命中缓存。若 SDK 工具不在默认位置，可设置 `HNPCLI=/绝对路径/hnpcli`。HNP 的 `name/version` 固定为 `huiwen_python/1.0.0`。
+需要重建时只复制运行时与目标依赖，清除运行时目录中可能残留的汇文 API、MarkItDown 和旧转换入口，再用 SDK 的 `hnpcli` 打包；成功后原子替换 `hnp/arm64-v8a/huiwen_python.hnp`，再写入新指纹。任一步失败仍停止构建。删除 `.hnp-cache/hnp-build.sha256` 或成品 HNP 可强制重打包；删除整个 `.hnp-cache/` 可连同目标依赖一起重新准备。首次迁移到环境/业务拆分会重建一次 HNP，之后仅修改业务代码不会重建环境。若 SDK 工具不在默认位置，可设置 `HNPCLI=/绝对路径/hnpcli`。HNP 的 `name/version` 固定为 `huiwen_python/1.0.0`。
 
 MarkItDown 官方源码保持在子模块的 `v0.1.8` 提交；它采用 MIT 许可，可修改并商用，但分发时需保留许可与第三方声明。其官方包强制依赖 Magika/ONNX Runtime，而当前目标架构无法直接解析 ONNX Runtime wheel。仓库中的补丁只让 Magika 可选；本阶段输入已由选择器限定为 `.pdf`，按扩展名交给 PDF 转换器。补丁不改动子模块原始源码。pip 能解析目标架构 wheel 只说明可获取包，不代表鸿蒙设备能加载其中的原生 `.so`；需在设备上完成导入及实际 PDF 转换验收。
 
-Hvigor 的默认 `PackageHap` 不会自动带入根目录的 HNP。`entry/hvigorfile.ts` 在 `PackageHap` 后、`SignHap` 前先准备 HNP，再调用 SDK `app_packing_tool.jar --hnp-path` 重打未签名 HAP，并检查归档中是否存在 `hnp/arm64-v8a/huiwen_python.hnp`；复用 HNP 不会跳过注入和签名。构建输出中的 `[HUIWEN_HNP] CACHED` 表示成品复用，`GENERATED` 表示重新生成，`DEPENDENCIES install/cached` 表示重建时目标 wheel 的来源，`START` / `DONE` 表示准备任务的开始和结束。SDK 不在 DevEco Studio 默认安装目录时，设置 `DEVECO_SDK_HOME` 或 `OHOS_SDK_HOME` 指向 SDK 根目录。源码修改后的实际安装更新仍需设备验证；转换诊断在 HiLog 中筛选 `HuiwenPython`，核对 `RUNTIME` 的算法标识。
+Hvigor 的默认 `PackageHap` 不会自动带入根目录的 HNP。`entry/hvigorfile.ts` 在 `PackageHap` 后、`SignHap` 前先准备 HNP，再调用 SDK `app_packing_tool.jar --hnp-path` 重打未签名 HAP，并检查环境 HNP 和 `resources/rawfile/python/huiwen_converter.pyz` 均存在；复用环境不跳过注入和签名。构建日志中的 `[HUIWEN_HNP] CACHED/GENERATED` 与 `[HUIWEN_PY_BUNDLE] CACHED/GENERATED` 分别表示两个产物的状态。SDK 不在默认位置时设置 `DEVECO_SDK_HOME` 或 `OHOS_SDK_HOME`。设备日志筛选 `HuiwenPython`：`PYTHON_BUNDLE` 显示缓存业务包哈希及路径，`PYTHON_START` 显示 HNP 解释器与当前 pyz，`RUNTIME` 显示实际导入模块及算法标识。
 
-本次增量优化仅做语法和格式检查，未执行构建、打包或设备运行。后续验收时连续运行两次：第一次允许 `GENERATED`，第二次应见 HNP 与 Markdown 的 `CACHED`；仅改 ArkTS 界面时应继续复用 HNP，改 Python 转换源码后应出现 HNP `GENERATED`。同时对比 `RepackHapWithHnp` 与整次 Run 耗时，确认未变化的 Markdown 页面不再触发 Qt RCC；安装、传输及进程启动耗时另行计量。
+本次拆分仅做语法和格式检查，未执行构建、打包或设备运行。后续验收：首次迁移允许环境 HNP 和业务 pyz 各生成一次；原样复跑应同时命中缓存；只改 Python API 或 MarkItDown 时应仅见业务包 `GENERATED`、环境 `CACHED`；改目标依赖清单才应重建环境。安装后确认 `PYTHON_START` 的脚本来自缓存 pyz，实际完成一次 PDF 转换；可再运行 `packaging/ohos/check_workspace_hap.py <signed.hap>` 检查 pyz 入口和许可。对比构建耗时，安装和无线传输另行计量；HAP 仍携带完整环境，并非设备差量安装。
 
 ```sh
 cd entry && ohpm install

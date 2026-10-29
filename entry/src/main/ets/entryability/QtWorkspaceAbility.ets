@@ -100,6 +100,8 @@ export default class QtWorkspaceAbility extends UIAbility {
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     try {
+      // Qt 窗口可独立启动，资源准备不依赖首页 Ability 的生命周期。
+      nativeBridge.configurePython(this.context.resourceManager, this.context.cacheDir);
       this.cefProxy = new CefWorkspaceProxy(this.context, windowStage, (): void => {
         this.returnHome();
       });
