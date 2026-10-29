@@ -3,6 +3,7 @@
 #include "components/ConvertButton.h"
 #include "components/functionBar/FileMenu.h"
 #include "components/functionBar/FunctionBar.h"
+#include "components/splitter/WorkspaceSplitter.h"
 #include "resultView/MarkdownResultView.h"
 #include "sandbox/SandboxService.h"
 #include "services/ConversionService.h"
@@ -16,15 +17,15 @@
 #include <QLabel>
 #include <QResizeEvent>
 #include <QSizePolicy>
-#include <QSplitter>
 #include <QSplitterHandle>
 #include <QTimer>
 #include <QVBoxLayout>
 
 ConversionWindow::ConversionWindow(QWidget *parent)
-    : QWidget(parent), splitter_(new QSplitter(Qt::Horizontal, this)), source_(new SourceDocumentView),
-      result_(new MarkdownResultView), button_(new ConvertButton(this)), functionBar_(new FunctionBar(this)),
-      conversion_(new ConversionService(this)), sandbox_(new SandboxService(this)), status_(new QLabel(this))
+    : QWidget(parent), splitter_(new WorkspaceSplitter(this)), source_(new SourceDocumentView),
+      result_(new MarkdownResultView), button_(new ConvertButton(this)),
+      functionBar_(new FunctionBar(this)), conversion_(new ConversionService(this)),
+      sandbox_(new SandboxService(this)), status_(new QLabel(this))
 {
     setWindowTitle(QStringLiteral("汇文MCP · 转换工作区"));
     setMinimumSize(640, 480);
@@ -48,11 +49,7 @@ ConversionWindow::ConversionWindow(QWidget *parent)
     layout->addWidget(functionBar_);
     splitter_->addWidget(source_);
     splitter_->addWidget(result_);
-    splitter_->setChildrenCollapsible(false);
-    splitter_->setHandleWidth(7);
     splitter_->setSizes({600, 600});
-    splitter_->handle(1)->setCursor(Qt::SplitHCursor);
-    splitter_->setStyleSheet("QSplitter::handle:horizontal { background: #D4DEEC; margin: 0 3px; }");
     splitter_->installEventFilter(this);
     // 剩余高度全部分配给文档区域，避免空状态栏占据半个窗口。
     layout->addWidget(splitter_, 1);

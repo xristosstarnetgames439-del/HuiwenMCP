@@ -1,5 +1,6 @@
 /* PDFium 仅在后台任务中调用；窗口线程只排版和绘制 QImage。 */
 #include "PdfPreviewWidget.h"
+#include "components/scrollBar/DocumentScrollBar.h"
 #include <fpdfview.h>
 #include <QApplication>
 #include <QFile>
@@ -133,22 +134,15 @@ PdfPreviewResult renderPage(const std::shared_ptr<PdfPreviewDocument> &document,
 } // namespace
 
 PdfPreviewWidget::PdfPreviewWidget(QWidget *parent)
-    : QAbstractScrollArea(parent), scrollAnimation_(verticalScrollBar(), "value", this)
+    : QAbstractScrollArea(parent), scrollAnimation_(this)
 {
     setFrameShape(QFrame::NoFrame);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    // PDF 滚动条使用局部样式，不影响工作区其他控件。
-    verticalScrollBar()->setStyleSheet(QStringLiteral(
-        "QScrollBar:vertical { width: 24px; margin: 0; border: none; background: transparent; }"
-        "QScrollBar::handle:vertical { min-height: 30px; "
-        "background: #c6c6c6; }"
-        "QScrollBar::handle:vertical:hover { background: rgba(0, 0, 0, 128); }"
-        "QScrollBar::handle:vertical:pressed { background: rgba(0, 0, 0, 160); }"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical "
-        "{ height: 0; border: none; background: transparent; }"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical "
-        "{ background: transparent; }"));
+    setVerticalScrollBar(new DocumentScrollBar(this));
+    // 替换滚动条后再绑定动画，避免保留已被 Qt 释放的旧滚动条。
+    scrollAnimation_.setTargetObject(verticalScrollBar());
+    scrollAnimation_.setPropertyName("value");
     // 滚动值按逻辑像素计量，Qt 默认的单步 1 不适合文档阅读。
     verticalScrollBar()->setSingleStep(40);
     viewport()->setBackgroundRole(QPalette::Window);

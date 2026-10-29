@@ -18,6 +18,8 @@ set(workspace_sources
     src/resultView/MarkdownPreviewWidget.cpp
     src/components/FileCard.cpp
     src/components/ConvertButton.cpp
+    src/components/splitter/WorkspaceSplitter.cpp
+    src/components/scrollBar/DocumentScrollBar.cpp
     src/components/functionBar/FunctionBar.cpp
     src/components/functionBar/FileMenu.cpp
     src/components/functionBar/SelectionMenu.cpp

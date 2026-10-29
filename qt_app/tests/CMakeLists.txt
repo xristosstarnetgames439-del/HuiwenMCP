@@ -11,6 +11,7 @@ endif()
 add_executable(pdf_preview_check pdf_preview_check.cpp
     ../src/sourceView/PdfPreviewWidget.cpp ../src/sourceView/PdfPreviewWidget.h
     ../src/sourceView/SourceDocumentView.cpp ../src/sourceView/SourceDocumentView.h
+    ../src/components/scrollBar/DocumentScrollBar.cpp
     ../src/components/FileCard.cpp ../resources/file-icons.qrc)
 target_include_directories(pdf_preview_check PRIVATE ../src ../../third_party/pdfium/public)
 target_link_libraries(pdf_preview_check PRIVATE Qt5::Widgets Qt5::Concurrent "${PDFIUM_LIBRARY}")
