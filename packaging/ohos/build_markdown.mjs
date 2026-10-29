@@ -96,20 +96,28 @@ async function main() {
       bytes: contents.length, sha256: sha256(contents)
     }]))
   };
-  // 所有资源构建和校验成功后才替换旧目录；异常向上传播，阻止 HAP 打包。
-  mkdirSync(path.dirname(output), { recursive: true });
+  assets.set('build.json', Buffer.from(`${JSON.stringify(metadata, null, 2)}\n`));
+  // 内容相同的文件保留时间戳，避免 Qt RCC 和 HAP 资源处理无意义地重新执行。
+  const changed = [...assets].filter(([name, contents]) => {
+    const target = path.join(output, name);
+    return !existsSync(target) || !Buffer.from(contents).equals(readFileSync(target));
+  });
+  if (changed.length === 0) {
+    console.info(`[HUIWEN_MD] CACHED output=${output}`);
+    return;
+  }
+  mkdirSync(output, { recursive: true });
   const cache = path.join(root, '.native-tools');
   mkdirSync(cache, { recursive: true });
   const staging = mkdtempSync(path.join(cache, 'markdown-'));
   try {
-    for (const [name, contents] of assets) writeFileSync(path.join(staging, name), contents);
-    writeFileSync(path.join(staging, 'build.json'), `${JSON.stringify(metadata, null, 2)}\n`);
-    rmSync(output, { recursive: true, force: true });
-    renameSync(staging, output);
+    // 所有变化文件写入成功后才逐个原子替换；失败继续阻止 HAP 打包。
+    for (const [name, contents] of changed) writeFileSync(path.join(staging, name), contents);
+    for (const [name] of changed) renameSync(path.join(staging, name), path.join(output, name));
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
-  console.info(`[HUIWEN_MD] DONE output=${output}`);
+  console.info(`[HUIWEN_MD] GENERATED output=${output} files=${changed.length}`);
 }
 
 main().catch((error) => {

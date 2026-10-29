@@ -55,7 +55,7 @@ HuiWenMCP/
 │   ├── libs/arm64-v8a/                [生成] Qt、PDFium 与本项目动态库，不进入 Git
 │   │   └── libQt5{Core,Gui,Widgets,Concurrent}.so、QPA、libpdfium.so、libhuiwen_{native,qt}.so
 │   ├── build-profile.json5            [已有] HAP 构建与 ABI 配置
-│   ├── hvigorfile.ts                   [已有] 每次运行构建生成 Python HNP，并在 HAP 签名前注入
+│   ├── hvigorfile.ts                   [已有] 按输入准备 Python HNP，并在 HAP 签名前注入
 │   └── oh-package.json5               [已有] 模块依赖
 ├── converter/                         [已有] 可供桌面端复用的 Python 转换逻辑
 │   ├── huiwen_converter/              [已有] 汇文公开 Python API
@@ -263,8 +263,8 @@ python3 packaging/ohos/build_pdfium.py --sync
 DevEco Run 的顺序为 `PreBuild → PrepareNativeDependencies（恢复固定 Qt/CEF，再增量构建 PDFium）→ PrepareMarkdownResources → ConfigureCmake / CompileResource → BuildNativeWithNinja → ProcessLibs → PackageHap → RepackHapWithHnp → SignHap`。PDFium 编译和 Qt/NAPI 库同步在收集原生库之前完成；未改动的源码复用产物。这里只实现运行构建时更新，没有文件监听器，也没有在运行进程内卸载和替换 C++ 库。
 
 Markdown 另由 `PrepareMarkdownResources` 在 `PreBuild` 后、`ConfigureCmake`、`CompileResource` 和 `PackageHap` 前准备。
-它复用 Hvigor 的 Node/npm，首次 Run 联网按锁文件自动安装依赖，之后每次重新生成
-`entry/src/main/resources/rawfile/markdown/` 下的 JS/CSS、许可证和校验清单，随 HAP 收集；
+它复用 Hvigor 的 Node/npm，首次 Run 联网按锁文件自动安装依赖，之后每次构建并比对
+`entry/src/main/resources/rawfile/markdown/` 下的 JS/CSS、页面、许可证和校验清单；仅原子替换内容变化的文件，其余保留时间戳，避免 Qt RCC 无意义重编。全部相同时输出 `[HUIWEN_MD] CACHED`，有更新时输出 `GENERATED`，资源随 HAP 收集；
 安装或构建失败会停止打包。通用预览模板还经 Qt qrc 编入工作区动态库，直接接收 MD 原文，
 不为每篇 MD 另存 HTML。CEF 运行库使用项目内预编译版本，仅其包装层参与 C++ 编译；
 轻量 HAR 模块已固定在 `third_party/cef/web_engine/`，OHPM 首次同步无需等候大依赖下载。
@@ -296,17 +296,21 @@ python.runtime.dir=/绝对路径/python-3.14.6-ohos-arm64
 python.host.path=/绝对路径/宿主/python3
 ```
 
-也可用 `HUIWEN_PYTHON_RUNTIME` 和 `HOST_PYTHON` 环境变量覆盖上述配置。相对配置路径按项目根目录解析。正常点击 DevEco Run 并执行 HAP 构建安装时，签名前的 `RepackHapWithHnp` 任务每次重新生成 HNP；仅热重载不保证执行此任务。仍可手动生成：
+也可用 `HUIWEN_PYTHON_RUNTIME` 和 `HOST_PYTHON` 环境变量覆盖上述配置。相对配置路径按项目根目录解析。正常点击 DevEco Run 并执行 HAP 构建安装时，签名前的 `RepackHapWithHnp` 任务先检查 HNP 输入，未变化时复用成品；首次准备、输入变化或产物缺失/校验不符时重新生成。仅热重载不保证执行此任务。也可手动执行同一检查和打包流程：
 
 ```sh
 bash packaging/ohos/pack_python_hnp.sh /绝对路径/python-3.14.6-ohos-arm64
 ```
 
-脚本使用本机 Python 的 pip 下载 `requirements-pdf.txt` 中锁定的鸿蒙 arm64/musl wheel。目标依赖按清单 SHA-256 缓存在被 Git 忽略的 `.hnp-cache/`，清单变化时重新安装；需要强制刷新依赖时删除该缓存。MarkItDown 子模块、汇文 Python API、自检和转换脚本每次重新复制，随后应用 `markitdown-no-magika.patch` 并用 SDK 的 `hnpcli` 生成新 HNP。只有成功生成非空归档后才替换 `hnp/arm64-v8a/huiwen_python.hnp`；任一步失败都会停止构建，不使用旧 HNP 继续安装。若 SDK 工具不在默认位置，可设置 `HNPCLI=/绝对路径/hnpcli`。HNP 的 `name/version` 固定为 `huiwen_python/1.0.0`。
+脚本使用本机 Python 的 pip 下载 `requirements-pdf.txt` 中锁定的鸿蒙 arm64/musl wheel。目标依赖按清单 SHA-256 缓存在被 Git 忽略的 `.hnp-cache/`，清单变化时重新安装。成品指纹保存在 `.hnp-cache/hnp-build.sha256`，覆盖运行时目录、MarkItDown 源码及许可、汇文 Python API、转换入口、自检脚本、依赖清单、补丁、`hnp.json`、打包脚本和 `hnpcli`；按文件内容、路径、权限及符号链接目标计算，并校验已有 HNP 的 SHA-256。ArkTS、Qt 和 PDFium 修改不会使 HNP 失效。
+
+需要重建时才复制运行时、依赖和业务源码，应用 `markitdown-no-magika.patch` 并用 SDK 的 `hnpcli` 打包；成功后原子替换 `hnp/arm64-v8a/huiwen_python.hnp`，再写入新指纹。任一步失败仍停止构建。删除 `.hnp-cache/hnp-build.sha256` 或成品 HNP 可强制重打包；删除整个 `.hnp-cache/` 可连同目标依赖一起重新准备。首次启用本次缓存会重建一次，之后未变输入才命中缓存。若 SDK 工具不在默认位置，可设置 `HNPCLI=/绝对路径/hnpcli`。HNP 的 `name/version` 固定为 `huiwen_python/1.0.0`。
 
 MarkItDown 官方源码保持在子模块的 `v0.1.8` 提交；它采用 MIT 许可，可修改并商用，但分发时需保留许可与第三方声明。其官方包强制依赖 Magika/ONNX Runtime，而当前目标架构无法直接解析 ONNX Runtime wheel。仓库中的补丁只让 Magika 可选；本阶段输入已由选择器限定为 `.pdf`，按扩展名交给 PDF 转换器。补丁不改动子模块原始源码。pip 能解析目标架构 wheel 只说明可获取包，不代表鸿蒙设备能加载其中的原生 `.so`；需在设备上完成导入及实际 PDF 转换验收。
 
-Hvigor 的默认 `PackageHap` 不会自动带入根目录的 HNP。`entry/hvigorfile.ts` 在 `PackageHap` 后、`SignHap` 前先生成 HNP，再调用 SDK `app_packing_tool.jar --hnp-path` 重打未签名 HAP，并检查归档中是否存在 `hnp/arm64-v8a/huiwen_python.hnp`。构建输出中的 `[HUIWEN_HNP] START`、`DEPENDENCIES install/cached`、`GENERATED`、`DONE` 可用于核对流程。SDK 不在 DevEco Studio 默认安装目录时，设置 `DEVECO_SDK_HOME` 或 `OHOS_SDK_HOME` 指向 SDK 根目录。源码修改后的实际安装更新仍需设备验证；转换诊断在 HiLog 中筛选 `HuiwenPython`，核对 `RUNTIME` 的算法标识。
+Hvigor 的默认 `PackageHap` 不会自动带入根目录的 HNP。`entry/hvigorfile.ts` 在 `PackageHap` 后、`SignHap` 前先准备 HNP，再调用 SDK `app_packing_tool.jar --hnp-path` 重打未签名 HAP，并检查归档中是否存在 `hnp/arm64-v8a/huiwen_python.hnp`；复用 HNP 不会跳过注入和签名。构建输出中的 `[HUIWEN_HNP] CACHED` 表示成品复用，`GENERATED` 表示重新生成，`DEPENDENCIES install/cached` 表示重建时目标 wheel 的来源，`START` / `DONE` 表示准备任务的开始和结束。SDK 不在 DevEco Studio 默认安装目录时，设置 `DEVECO_SDK_HOME` 或 `OHOS_SDK_HOME` 指向 SDK 根目录。源码修改后的实际安装更新仍需设备验证；转换诊断在 HiLog 中筛选 `HuiwenPython`，核对 `RUNTIME` 的算法标识。
+
+本次增量优化仅做语法和格式检查，未执行构建、打包或设备运行。后续验收时连续运行两次：第一次允许 `GENERATED`，第二次应见 HNP 与 Markdown 的 `CACHED`；仅改 ArkTS 界面时应继续复用 HNP，改 Python 转换源码后应出现 HNP `GENERATED`。同时对比 `RepackHapWithHnp` 与整次 Run 耗时，确认未变化的 Markdown 页面不再触发 Qt RCC；安装、传输及进程启动耗时另行计量。
 
 ```sh
 cd entry && ohpm install

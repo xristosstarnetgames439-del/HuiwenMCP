@@ -31,7 +31,7 @@ const prepareNativeDependenciesPlugin = {
   }
 };
 
-// 每次 Run 都重新生成 Markdown Web 资源，使用运行 Hvigor 的同一套 Node。
+// 每次 Run 检查 Markdown Web 资源，内容相同则保留产物和时间戳；复用 Hvigor 的 Node。
 const prepareMarkdownResourcesPlugin = {
   pluginId: 'huiwen.prepare-markdown-resources',
   apply(node: any) {
@@ -59,7 +59,7 @@ const prepareMarkdownResourcesPlugin = {
   }
 };
 
-// 每次运行此任务先生成新 HNP，再在签名前重打未签名 HAP。
+// HNP 输入不变时复用成品；每次仍在签名前注入 HNP 并校验未签名 HAP。
 const repackHapWithHnpPlugin = {
   pluginId: 'huiwen.repack-hap-with-hnp',
   apply(node: any) {
@@ -123,7 +123,7 @@ const repackHapWithHnpPlugin = {
           }
         });
         if (!fs.existsSync(hnpFile) || fs.statSync(hnpFile).size === 0) {
-          throw new Error('HNP 自动生成后未找到有效产物，停止 HAP 打包');
+          throw new Error('HNP 准备后未找到有效产物，停止 HAP 打包');
         }
         console.info(`[HUIWEN_HNP] DONE file=${hnpFile} bytes=${fs.statSync(hnpFile).size}`);
 

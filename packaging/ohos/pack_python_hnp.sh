@@ -30,7 +30,60 @@ if [[ ! -x "$hnpcli" ]]; then
   exit 2
 fi
 
-mkdir -p "$project_dir/hnp/arm64-v8a"
+if [[ ! -d "$runtime_dir/lib/python3.14/site-packages" ]]; then
+  echo "当前打包脚本要求鸿蒙 Python 3.14 运行时" >&2
+  exit 2
+fi
+
+# 成品只依赖打包输入；ArkTS、Qt 和 PDFium 修改不会使 Python HNP 失效。
+hnp_file="$project_dir/hnp/arm64-v8a/huiwen_python.hnp"
+package_stamp="$project_dir/.hnp-cache/hnp-build.sha256"
+package_key=$("${HOST_PYTHON:-python3}" - \
+  "$runtime_dir" "$markitdown_src" "$project_dir/converter/huiwen_converter" \
+  "$project_dir/converter/pdf2md/convert.py" \
+  "$project_dir/third_party/markitdown/LICENSE" \
+  "$project_dir/third_party/markitdown/packages/markitdown/ThirdPartyNotices.md" \
+  "$project_dir/packaging/ohos/requirements-pdf.txt" \
+  "$project_dir/packaging/ohos/markitdown-no-magika.patch" \
+  "$project_dir/packaging/ohos/python_smoke.py" "$project_dir/packaging/ohos/hnp.json" \
+  "$project_dir/packaging/ohos/pack_python_hnp.sh" "$hnpcli" <<'PY'
+import hashlib
+import os
+from pathlib import Path
+import stat
+import sys
+
+digest = hashlib.sha256()
+for source in sys.argv[1:]:
+    root = Path(source).resolve(strict=True)
+    paths = [root, *sorted(root.rglob("*"))] if root.is_dir() else [root]
+    for path in paths:
+        info = path.lstat()
+        digest.update(os.fsencode(str(path)) + b"\0")
+        digest.update(str(stat.S_IMODE(info.st_mode)).encode() + b"\0")
+        if path.is_symlink():
+            digest.update(b"L" + os.fsencode(os.readlink(path)) + b"\0")
+        elif path.is_file():
+            digest.update(b"F" + str(info.st_size).encode() + b"\0")
+            with path.open("rb") as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(block)
+        elif path.is_dir():
+            digest.update(b"D")
+        else:
+            raise RuntimeError(f"不支持的 HNP 输入文件类型：{path}")
+print(digest.hexdigest())
+PY
+)
+if [[ -s "$hnp_file" && -f "$package_stamp" ]]; then
+  archive_key=$(shasum -a 256 "$hnp_file" | cut -d ' ' -f 1)
+  if [[ $(cat "$package_stamp") == "$package_key $archive_key" ]]; then
+    echo "[HUIWEN_HNP] CACHED file=$hnp_file"
+    exit 0
+  fi
+fi
+
+mkdir -p "$project_dir/hnp/arm64-v8a" "$project_dir/.hnp-cache"
 stage=$(mktemp -d)
 pack_output=$(mktemp -d "$project_dir/hnp/arm64-v8a/.pack.XXXXXX")
 dependency_stage=""
@@ -38,12 +91,8 @@ trap 'rm -rf "$stage" "$pack_output"; if [[ -n "$dependency_stage" ]]; then rm -
 cp -pR "$runtime_dir/." "$stage/"
 mkdir -p "$stage/share/huiwen" "$project_dir/hnp/arm64-v8a"
 site_packages="$stage/lib/python3.14/site-packages"
-if [[ ! -d "$site_packages" ]]; then
-  echo "当前打包脚本要求鸿蒙 Python 3.14 运行时" >&2
-  exit 2
-fi
 
-# 只缓存目标依赖；业务及 fork 源码每次重新复制，不从缓存取出。
+# 重建 HNP 时复用锁定的目标依赖，业务及 fork 源码重新复制。
 requirements="$project_dir/packaging/ohos/requirements-pdf.txt"
 dependency_key=$(shasum -a 256 "$requirements" | cut -d ' ' -f 1)
 cache_root="$project_dir/.hnp-cache/cp314-musllinux_1_2_aarch64"
@@ -85,5 +134,9 @@ if [[ ! -s "$pack_output/huiwen_python.hnp" ]]; then
   echo "HNP 打包未生成有效产物，保留旧文件但停止构建" >&2
   exit 1
 fi
-mv -f "$pack_output/huiwen_python.hnp" "$project_dir/hnp/arm64-v8a/huiwen_python.hnp"
-echo "[HUIWEN_HNP] GENERATED $project_dir/hnp/arm64-v8a/huiwen_python.hnp"
+archive_key=$(shasum -a 256 "$pack_output/huiwen_python.hnp" | cut -d ' ' -f 1)
+printf '%s %s\n' "$package_key" "$archive_key" > "$pack_output/build.sha256"
+mv -f "$pack_output/huiwen_python.hnp" "$hnp_file"
+# 归档替换成功后才提交指纹，失败或中断不会把旧归档认作本次新产物。
+mv -f "$pack_output/build.sha256" "$package_stamp"
+echo "[HUIWEN_HNP] GENERATED $hnp_file"
