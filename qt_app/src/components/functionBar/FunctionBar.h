@@ -2,13 +2,20 @@
 #pragma once
 #include <QToolBar>
 class FileMenu;
+class QAction;
 
 class FunctionBar : public QToolBar
 {
+    Q_OBJECT
   public:
     explicit FunctionBar(QWidget *parent = nullptr);
     FileMenu *fileMenu() const;
+    bool isScrollSynchronized() const;
+
+  signals:
+    void scrollSyncChanged(bool synchronized);
 
   private:
     FileMenu *fileMenu_;
+    QAction *synchronizedAction_;
 };

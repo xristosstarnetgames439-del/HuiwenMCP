@@ -10,7 +10,6 @@ class ConversionService;
 class SandboxService;
 class QSplitter;
 class QLabel;
-class QCheckBox;
 
 class ConversionWindow : public QWidget
 {
@@ -26,6 +25,7 @@ class ConversionWindow : public QWidget
     void placeConvertButton();
     void refreshBusyState();
     void refreshScrollSync();
+    bool scrollSyncEnabled() const;
     void selectDocument();
     void restoreDocument(const DocumentItem &document);
     QSplitter *splitter_;
@@ -36,7 +36,6 @@ class ConversionWindow : public QWidget
     ConversionService *conversion_;
     SandboxService *sandbox_;
     QLabel *status_;
-    QCheckBox *scrollSync_;
     DocumentItem document_;
     bool picking_ = false;
     bool converting_ = false;

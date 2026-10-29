@@ -1,4 +1,4 @@
-/* 顶部文件与滚动入口；滚动选项暂时只记录菜单状态，不切换实际滚动策略。 */
+/* 顶部文件与滚动入口；菜单选中项是同步状态的唯一来源，工作区接收变化后控制联动。 */
 #include "FunctionBar.h"
 #include "FileMenu.h"
 #include "SelectionMenu.h"
@@ -70,18 +70,24 @@ FunctionBar::FunctionBar(QWidget *parent) : QToolBar(parent), fileMenu_(new File
     auto *menu = new SelectionMenu(this);
     auto *modes = new QActionGroup(menu);
     modes->setExclusive(true);
-    auto *synchronized = menu->addAction(QStringLiteral("同步滚动"));
+    synchronizedAction_ = menu->addAction(QStringLiteral("同步滚动"));
     auto *oneWay = menu->addAction(QStringLiteral("单向滚动"));
-    for (auto *action : {synchronized, oneWay})
+    for (auto *action : {synchronizedAction_, oneWay})
     {
         action->setCheckable(true);
         modes->addAction(action);
     }
-    synchronized->setChecked(true);
+    synchronizedAction_->setChecked(true);
+    connect(synchronizedAction_, &QAction::toggled, this, &FunctionBar::scrollSyncChanged);
     addMenuButton(QStringLiteral("滚动设置"), menu);
 }
 
 FileMenu *FunctionBar::fileMenu() const
 {
     return fileMenu_;
+}
+
+bool FunctionBar::isScrollSynchronized() const
+{
+    return synchronizedAction_->isChecked();
 }
