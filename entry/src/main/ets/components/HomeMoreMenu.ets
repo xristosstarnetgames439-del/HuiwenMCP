@@ -2,9 +2,9 @@ import { KeyCode } from '@kit.InputKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { HomeAppearance } from '../utils/HomeAppearance';
 
-export const HOME_MENU_WIDTH: number = 264;
-export const HOME_APPEARANCE_WIDTH: number = 248;
-export const HOME_MENU_GAP: number = 8;
+export const HOME_MENU_WIDTH: number = 160;
+export const HOME_APPEARANCE_WIDTH: number = 152;
+export const HOME_MENU_GAP: number = 6;
 
 @Component
 export struct HomeMoreMenu {
@@ -28,30 +28,30 @@ export struct HomeMoreMenu {
   @Builder
   menuItem(label: string, icon: Resource, action: () => void, expandable: boolean = false) {
     Button({ type: ButtonType.Normal }) {
-      Row({ space: 12 }) {
+      Row({ space: 8 }) {
         Image(icon)
-          .width(20)
-          .height(20)
+          .width(14)
+          .height(14)
           .draggable(false)
         Text(label)
-          .fontSize(17)
+          .fontSize(14)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.home_text'))
           .layoutWeight(1)
           .textAlign(TextAlign.Start)
         if (expandable) {
           Image($r('app.media.menu_chevron'))
-            .width(16)
-            .height(16)
+            .width(14)
+            .height(14)
             .draggable(false)
         }
       }
       .width('100%')
     }
-    .height(44)
+    .height(36)
     .width('100%')
-    .padding({ left: 12, right: 12 })
-    .borderRadius(10)
+    .padding({ left: 8, right: 8 })
+    .borderRadius(6)
     .backgroundColor(this.hoveredItem === label || (expandable && this.appearanceOpen) ?
       $r('app.color.home_menu_hover') : Color.Transparent)
     .hoverEffect(HoverEffect.None)
@@ -65,36 +65,36 @@ export struct HomeMoreMenu {
     Divider()
       .color($r('app.color.home_border'))
       .strokeWidth(1)
-      .margin({ top: 4, bottom: 4, left: 12, right: 12 })
+      .margin({ top: 3, bottom: 3, left: 8, right: 8 })
   }
 
   @Builder
   appearanceItem(label: string, icon: Resource, mode: HomeAppearance) {
     Button({ type: ButtonType.Normal }) {
-      Row({ space: 12 }) {
+      Row({ space: 8 }) {
         Image(icon)
-          .width(20)
-          .height(20)
+          .width(14)
+          .height(14)
           .draggable(false)
         Text(label)
-          .fontSize(17)
+          .fontSize(14)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.home_text'))
           .layoutWeight(1)
           .textAlign(TextAlign.Start)
         if (this.appearance === mode) {
           Image($r('app.media.menu_check'))
-            .width(18)
-            .height(18)
+            .width(14)
+            .height(14)
             .draggable(false)
         }
       }
       .width('100%')
     }
     .width('100%')
-    .height(44)
-    .padding({ left: 12, right: 12 })
-    .borderRadius(10)
+    .height(36)
+    .padding({ left: 8, right: 8 })
+    .borderRadius(6)
     .backgroundColor(this.hoveredItem === label ? $r('app.color.home_menu_hover') : Color.Transparent)
     .hoverEffect(HoverEffect.None)
     .accessibilityText(`${label}${this.appearance === mode ? '，已选择' : ''}`)
@@ -115,11 +115,11 @@ export struct HomeMoreMenu {
       this.appearanceItem('跟随系统', $r('app.media.menu_monitor'), HomeAppearance.System)
     }
     .width(HOME_APPEARANCE_WIDTH)
-    .padding(8)
+    .padding(6)
     .backgroundColor($r('app.color.home_surface'))
     .border({ width: 1, color: $r('app.color.home_border') })
-    .borderRadius(18)
-    .shadow({ radius: 16, color: '#1A000000', offsetX: 0, offsetY: 4 })
+    .borderRadius(12)
+    .shadow({ radius: 12, color: '#1A000000', offsetX: 0, offsetY: 3 })
   }
 
   build() {
@@ -137,11 +137,11 @@ export struct HomeMoreMenu {
           this.menuItem('设置', $r('app.media.menu_settings'), () => this.onPlaceholder('设置'))
         }
         .width(HOME_MENU_WIDTH)
-        .padding(8)
+        .padding(6)
         .backgroundColor($r('app.color.home_surface'))
         .border({ width: 1, color: $r('app.color.home_border') })
-        .borderRadius(18)
-        .shadow({ radius: 16, color: '#1A000000', offsetX: 0, offsetY: 4 })
+        .borderRadius(12)
+        .shadow({ radius: 12, color: '#1A000000', offsetX: 0, offsetY: 3 })
       }
       if (this.appearanceOpen) {
         this.appearancePanel()
