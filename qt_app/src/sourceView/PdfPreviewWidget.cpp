@@ -137,7 +137,18 @@ PdfPreviewWidget::PdfPreviewWidget(QWidget *parent)
 {
     setFrameShape(QFrame::NoFrame);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    // PDF 滚动条使用局部样式，不影响工作区其他控件。
+    verticalScrollBar()->setStyleSheet(QStringLiteral(
+        "QScrollBar:vertical { width: 24px; margin: 0; border: none; background: transparent; }"
+        "QScrollBar::handle:vertical { min-height: 30px; "
+        "background: #c6c6c6; }"
+        "QScrollBar::handle:vertical:hover { background: rgba(0, 0, 0, 128); }"
+        "QScrollBar::handle:vertical:pressed { background: rgba(0, 0, 0, 160); }"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical "
+        "{ height: 0; border: none; background: transparent; }"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical "
+        "{ background: transparent; }"));
     // 滚动值按逻辑像素计量，Qt 默认的单步 1 不适合文档阅读。
     verticalScrollBar()->setSingleStep(40);
     viewport()->setBackgroundRole(QPalette::Window);
