@@ -2,6 +2,7 @@
 #pragma once
 #include <QAbstractScrollArea>
 #include <QCache>
+#include <QElapsedTimer>
 #include <QFutureWatcher>
 #include <QImage>
 #include <QPropertyAnimation>
@@ -47,6 +48,8 @@ class PdfPreviewWidget : public QAbstractScrollArea
   private:
     void layoutPages();
     void requestRender();
+    void stopScrolling();
+    void startInertia();
     int firstVisiblePage() const;
     QSize renderSize(int page) const;
     QString path_;
@@ -63,6 +66,12 @@ class PdfPreviewWidget : public QAbstractScrollArea
     QCache<int, QImage> images_{64 * 1024 * 1024};
     QFutureWatcher<PdfPreviewResult> watcher_;
     QPropertyAnimation scrollAnimation_;
+    QTimer inertiaTimer_;
+    QElapsedTimer velocityClock_;
+    qreal touchpadVelocity_ = 0;
+    qreal velocityDistance_ = 0;
+    qreal scrollRemainder_ = 0;
+    bool systemMomentum_ = false;
     QTimer resizeTimer_;
     QTimer scrollReportTimer_;
 };
