@@ -1,15 +1,18 @@
 /* PDFium 仅在后台任务中调用；窗口线程只排版和绘制 QImage。 */
 #include "PdfPreviewWidget.h"
 #include <fpdfview.h>
+#include <QApplication>
 #include <QFile>
 #include <QHideEvent>
 #include <QMutex>
 #include <QMutexLocker>
 #include <QPainter>
+#include <QPaintEvent>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QScopedValueRollback>
 #include <QShowEvent>
+#include <QWheelEvent>
 #include <QtConcurrent>
 #include <algorithm>
 #include <cmath>
@@ -126,7 +129,8 @@ PdfPreviewResult renderPage(const std::shared_ptr<PdfPreviewDocument> &document,
 }
 } // namespace
 
-PdfPreviewWidget::PdfPreviewWidget(QWidget *parent) : QAbstractScrollArea(parent)
+PdfPreviewWidget::PdfPreviewWidget(QWidget *parent)
+    : QAbstractScrollArea(parent), scrollAnimation_(verticalScrollBar(), "value", this)
 {
     setFrameShape(QFrame::NoFrame);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -134,6 +138,13 @@ PdfPreviewWidget::PdfPreviewWidget(QWidget *parent) : QAbstractScrollArea(parent
     // 滚动值按逻辑像素计量，Qt 默认的单步 1 不适合文档阅读。
     verticalScrollBar()->setSingleStep(40);
     viewport()->setBackgroundRole(QPalette::Window);
+    viewport()->setAttribute(Qt::WA_OpaquePaintEvent);
+    scrollAnimation_.setDuration(100);
+    scrollAnimation_.setEasingCurve(QEasingCurve::OutCubic);
+    connect(verticalScrollBar(), &QScrollBar::sliderPressed, &scrollAnimation_,
+            &QPropertyAnimation::stop);
+    connect(verticalScrollBar(), &QScrollBar::actionTriggered, &scrollAnimation_,
+            &QPropertyAnimation::stop);
     setAccessibleName(QStringLiteral("PDF 正文预览"));
     resizeTimer_.setSingleShot(true);
     resizeTimer_.setInterval(150);
@@ -151,12 +162,14 @@ PdfPreviewWidget::PdfPreviewWidget(QWidget *parent) : QAbstractScrollArea(parent
                     {
                         message_ = result.error;
                         emit previewReadyChanged(false);
+                        viewport()->update();
                     }
                     else if (result.page < 0)
                     {
                         message_.clear();
                         pageSizes_ = result.pageSizes;
                         layoutPages();
+                        viewport()->update();
                         emit documentOpened(path_);
                         emit previewReadyChanged(isPreviewReady());
                     }
@@ -166,8 +179,10 @@ PdfPreviewWidget::PdfPreviewWidget(QWidget *parent) : QAbstractScrollArea(parent
                     {
                         images_.insert(result.page, new QImage(result.image),
                                        static_cast<int>(result.image.sizeInBytes()));
+                        viewport()->update(pageRects_[result.page]
+                                               .translated(0, -verticalScrollBar()->value())
+                                               .toAlignedRect());
                     }
-                    viewport()->update();
                 }
                 taskPending_ = false;
                 requestRender();
@@ -190,6 +205,7 @@ void PdfPreviewWidget::setDocument(const QString &path)
     }
     ++generation_;
     QScopedValueRollback<bool> applying(applyingScroll_, true);
+    scrollAnimation_.stop();
     scrollReportTimer_.stop();
     path_ = path;
     layoutError_.clear();
@@ -230,6 +246,8 @@ void PdfPreviewWidget::setScrollPosition(int page, double fraction, double progr
 {
     if (!isPreviewReady() || !std::isfinite(fraction) || !std::isfinite(progress))
         return;
+    // 对侧同步定位直接生效，不能被尚未结束的本地滚轮动画覆盖。
+    scrollAnimation_.stop();
     scrollReportTimer_.stop();
     QScopedValueRollback<bool> applying(applyingScroll_, true);
     const int maximum = verticalScrollBar()->maximum();
@@ -250,6 +268,7 @@ int PdfPreviewWidget::firstVisiblePage() const
 
 void PdfPreviewWidget::layoutPages()
 {
+    scrollAnimation_.stop();
     QScopedValueRollback<bool> applying(applyingScroll_, true);
     layoutError_.clear();
     const int anchor = firstVisiblePage();
@@ -277,6 +296,17 @@ void PdfPreviewWidget::layoutPages()
         top += height + pageGap;
     }
     pageRects_ = std::move(rectangles);
+    // 预算只随布局变化，避免跨页时因可见页数变化反复使位图缓存失效。
+    int maxVisible = 1;
+    int end = 0;
+    for (int first = 0; first < pageRects_.size(); ++first)
+    {
+        while (end < pageRects_.size() &&
+               pageRects_[end].top() < pageRects_[first].bottom() + viewport()->height())
+            ++end;
+        maxVisible = std::max(maxVisible, end - first);
+    }
+    renderPixelBudget_ = maxRenderPixels / maxVisible;
     verticalScrollBar()->setPageStep(viewport()->height());
     const int height =
         pageRects_.isEmpty() ? 0 : static_cast<int>(std::ceil(top - pageGap + pageMargin));
@@ -291,13 +321,7 @@ QSize PdfPreviewWidget::renderSize(int page) const
     if (page < 0 || page >= pageRects_.size())
         return {};
     QSizeF size = pageRects_[page].size() * viewport()->devicePixelRatioF();
-    const qreal bottom = verticalScrollBar()->value() + viewport()->height();
-    const auto last =
-        std::lower_bound(pageRects_.cbegin(), pageRects_.cend(), bottom,
-                         [](const QRectF &rect, qreal value) { return rect.top() < value; });
-    const int visibleCount =
-        std::max(1, static_cast<int>(last - pageRects_.cbegin()) - firstVisiblePage());
-    const qreal pixelBudget = std::max(1, maxRenderPixels / visibleCount);
+    const qreal pixelBudget = std::max(1, renderPixelBudget_);
     // ponytail: 可见页共用 64 MiB 位图预算；超长页降采样，需高清长页时改为分块渲染。
     const qreal scale = std::min({1.0, 8192.0 / std::max(size.width(), size.height()),
                                   std::sqrt(pixelBudget / (size.width() * size.height())),
@@ -326,10 +350,24 @@ void PdfPreviewWidget::requestRender()
     if (!message_.isEmpty() || !layoutError_.isEmpty() || resizeTimer_.isActive())
         return;
     const qreal bottom = verticalScrollBar()->value() + viewport()->height();
-    for (int page = firstVisiblePage(); page < pageRects_.size() && pageRects_[page].top() < bottom;
-         ++page)
+    const int first = firstVisiblePage();
+    QVector<int> pages;
+    int end = first;
+    while (end < pageRects_.size() && pageRects_[end].top() < bottom)
+        pages.append(end++);
+    // 可见页全部就绪后才预取下一页、上一页；内存不足时放弃预取。
+    pages.append(end);
+    pages.append(first - 1);
+    qint64 nearbyCost = 0;
+    for (int page : pages)
     {
+        if (page < 0 || page >= pageRects_.size())
+            continue;
         const QSize size = renderSize(page);
+        const qint64 cost = qint64(size.width()) * size.height() * 4;
+        if ((page < first || page >= end) && nearbyCost + cost > images_.maxCost())
+            continue;
+        nearbyCost += cost;
         const qreal ratio = viewport()->devicePixelRatioF();
         const QImage *image = images_.object(page);
         if (image && image->size() == size && qFuzzyCompare(image->devicePixelRatio(), ratio))
@@ -342,10 +380,10 @@ void PdfPreviewWidget::requestRender()
     }
 }
 
-void PdfPreviewWidget::paintEvent(QPaintEvent *)
+void PdfPreviewWidget::paintEvent(QPaintEvent *event)
 {
     QPainter painter(viewport());
-    painter.fillRect(viewport()->rect(), palette().color(QPalette::Window));
+    painter.fillRect(event->rect(), palette().color(QPalette::Window));
     painter.setPen(QColor("#667B98"));
     const QString message = layoutError_.isEmpty() ? message_ : layoutError_;
     if (!message.isEmpty())
@@ -362,6 +400,8 @@ void PdfPreviewWidget::paintEvent(QPaintEvent *)
          ++page)
     {
         const QRectF rect = pageRects_[page].translated(0, -offset);
+        if (!event->region().intersects(rect.toAlignedRect()))
+            continue;
         painter.fillRect(rect, Qt::white);
         if (const QImage *image = images_.object(page))
             painter.drawImage(rect, *image);
@@ -391,14 +431,63 @@ void PdfPreviewWidget::showEvent(QShowEvent *event)
 
 void PdfPreviewWidget::hideEvent(QHideEvent *event)
 {
+    scrollAnimation_.stop();
     scrollReportTimer_.stop();
     emit previewReadyChanged(false);
     QAbstractScrollArea::hideEvent(event);
 }
 
-void PdfPreviewWidget::scrollContentsBy(int, int)
+void PdfPreviewWidget::wheelEvent(QWheelEvent *event)
 {
-    viewport()->update();
+    if (!isPreviewReady() || event->modifiers() != Qt::NoModifier)
+    {
+        QAbstractScrollArea::wheelEvent(event);
+        return;
+    }
+    auto *bar = verticalScrollBar();
+    if (!event->pixelDelta().isNull())
+    {
+        // 触控板保留系统给出的逐像素位移及惯性，不再叠加动画。
+        int delta = event->pixelDelta().y();
+#ifdef Q_OS_OPENHARMONY
+        // 鸿蒙触控板的像素值与 Qt 角度值反向；鼠标为 NoScrollPhase，不取反。
+        if (event->phase() != Qt::NoScrollPhase)
+            delta = -delta;
+#endif
+        scrollAnimation_.stop();
+        bar->setValue(bar->value() - delta);
+    }
+    else if (event->angleDelta().y())
+    {
+        const int delta = qRound(event->angleDelta().y() / 120.0 *
+                                 QApplication::wheelScrollLines() * bar->singleStep());
+        const int pending = scrollAnimation_.state() == QAbstractAnimation::Running
+                                ? scrollAnimation_.endValue().toInt() - bar->value()
+                                : 0;
+        const int start = bar->value();
+        // 同方向继续累积目标；反向时从当前位置立即转向。
+        const int target =
+            qBound(bar->minimum(), start + (pending * double(delta) < 0 ? pending : 0) - delta,
+                   bar->maximum());
+        scrollAnimation_.stop();
+        scrollAnimation_.setStartValue(start);
+        scrollAnimation_.setEndValue(target);
+        scrollAnimation_.start();
+    }
+    else
+    {
+        event->ignore();
+        return;
+    }
+    event->accept();
+}
+
+void PdfPreviewWidget::scrollContentsBy(int dx, int dy)
+{
+    if (isPreviewReady())
+        viewport()->scroll(dx, dy);
+    else
+        viewport()->update();
     requestRender();
     if (!applyingScroll_ && !scrollReportTimer_.isActive())
         scrollReportTimer_.start();

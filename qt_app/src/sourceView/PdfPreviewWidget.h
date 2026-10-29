@@ -1,9 +1,10 @@
-/* PDF 正文预览：按区域宽度排版，后台渲染可见页。 */
+/* PDF 正文预览：按区域宽度排版，后台渲染可见页并预取相邻页。 */
 #pragma once
 #include <QAbstractScrollArea>
 #include <QCache>
 #include <QFutureWatcher>
 #include <QImage>
+#include <QPropertyAnimation>
 #include <QRectF>
 #include <QTimer>
 #include <QVector>
@@ -40,6 +41,7 @@ class PdfPreviewWidget : public QAbstractScrollArea
     void resizeEvent(QResizeEvent *event) override;
     void showEvent(QShowEvent *event) override;
     void hideEvent(QHideEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
     void scrollContentsBy(int dx, int dy) override;
 
   private:
@@ -54,11 +56,13 @@ class PdfPreviewWidget : public QAbstractScrollArea
     bool loadPending_ = false;
     bool taskPending_ = false;
     bool applyingScroll_ = false;
+    int renderPixelBudget_ = 1;
     std::shared_ptr<PdfPreviewDocument> document_;
     QVector<QSizeF> pageSizes_;
     QVector<QRectF> pageRects_;
     QCache<int, QImage> images_{64 * 1024 * 1024};
     QFutureWatcher<PdfPreviewResult> watcher_;
+    QPropertyAnimation scrollAnimation_;
     QTimer resizeTimer_;
     QTimer scrollReportTimer_;
 };
