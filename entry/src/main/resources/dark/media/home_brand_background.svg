@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="3072" viewBox="0 0 1536 3072">
+  <desc>汇文MCP首页背景：深石墨金属质感、左下至右上的黑色柔雾、左上输入文档与右下输出文档。上下留白供页面显示文字，圆角由容器裁切。</desc>
+  <defs>
+    <linearGradient id="silver" x1="0" y1="0" x2="1536" y2="3072" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#30363e"/>
+      <stop offset="0.18" stop-color="#252b33"/>
+      <stop offset="0.34" stop-color="#343b44"/>
+      <stop offset="0.51" stop-color="#2b323a"/>
+      <stop offset="0.67" stop-color="#262d35"/>
+      <stop offset="0.84" stop-color="#353d46"/>
+      <stop offset="1" stop-color="#2b323a"/>
+    </linearGradient>
+    <!-- t=0.5 的柔雾中心线为 x+y=2304，穿过画布中心。 -->
+    <linearGradient id="reflection" x1="0" y1="768" x2="1536" y2="2304" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#080b10" stop-opacity="0.0000"/>
+      <stop offset="0.08" stop-color="#080b10" stop-opacity="0.0074"/>
+      <stop offset="0.14" stop-color="#080b10" stop-opacity="0.0241"/>
+      <stop offset="0.2" stop-color="#080b10" stop-opacity="0.0607"/>
+      <stop offset="0.26" stop-color="#080b10" stop-opacity="0.1266"/>
+      <stop offset="0.3" stop-color="#080b10" stop-opacity="0.1881"/>
+      <stop offset="0.34" stop-color="#080b10" stop-opacity="0.2597"/>
+      <stop offset="0.38" stop-color="#080b10" stop-opacity="0.3335"/>
+      <stop offset="0.42" stop-color="#080b10" stop-opacity="0.3988"/>
+      <stop offset="0.46" stop-color="#080b10" stop-opacity="0.4439"/>
+      <stop offset="0.48" stop-color="#080b10" stop-opacity="0.4559"/>
+      <stop offset="0.5" stop-color="#080b10" stop-opacity="0.4600"/>
+      <stop offset="0.52" stop-color="#080b10" stop-opacity="0.4559"/>
+      <stop offset="0.54" stop-color="#080b10" stop-opacity="0.4439"/>
+      <stop offset="0.58" stop-color="#080b10" stop-opacity="0.3988"/>
+      <stop offset="0.62" stop-color="#080b10" stop-opacity="0.3335"/>
+      <stop offset="0.66" stop-color="#080b10" stop-opacity="0.2597"/>
+      <stop offset="0.7" stop-color="#080b10" stop-opacity="0.1881"/>
+      <stop offset="0.74" stop-color="#080b10" stop-opacity="0.1266"/>
+      <stop offset="0.8" stop-color="#080b10" stop-opacity="0.0607"/>
+      <stop offset="0.86" stop-color="#080b10" stop-opacity="0.0241"/>
+      <stop offset="0.92" stop-color="#080b10" stop-opacity="0.0074"/>
+      <stop offset="1" stop-color="#080b10" stop-opacity="0.0000"/>
+    </linearGradient>
+    <linearGradient id="wash" x1="0" y1="0" x2="0" y2="3072" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#58616d" stop-opacity="0.1000"/>
+      <stop offset="0.22" stop-color="#58616d" stop-opacity="0.0000"/>
+      <stop offset="0.78" stop-color="#58616d" stop-opacity="0.0000"/>
+      <stop offset="1" stop-color="#58616d" stop-opacity="0.0900"/>
+    </linearGradient>
+  </defs>
+  <rect width="1536" height="3072" fill="url(#silver)"/>
+  <rect width="1536" height="3072" fill="url(#reflection)"/>
+  <rect width="1536" height="3072" fill="url(#wash)"/>
+  <!-- 输入文档：正文、表格、图片；均为低对比线框。 -->
+  <g transform="translate(256 760)" fill="none" stroke="#d4dbe3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.20">
+    <path d="M100 0h112l44 44v180H100z M212 0v44h44"/>
+    <path d="M125 73h105v112H125z M160 73v112 M195 73v112 M125 110h105 M125 148h105"/>
+    <path d="M0 110h112l44 44v180H0z M112 110v44h44"/>
+    <path d="M26 183h104 M26 214h104 M26 245h104 M26 276h74"/>
+    <path d="M210 146h112l44 44v180H210z M322 146v44h44"/>
+    <circle cx="250" cy="231" r="12"/>
+    <path d="m235 316 34-45 25 27 25-41 26 59z"/>
+  </g>
+  <!-- 输出文档：代码、段落、结构化清单；与左上组形成转换呼应。 -->
+  <g transform="translate(914 1940)" fill="none" stroke="#d4dbe3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.20">
+    <path d="M0 0h112l44 44v180H0z M112 0v44h44"/>
+    <path d="m54 86-23 23 23 23 M100 86l23 23-23 23"/>
+    <path d="M100 104h112l44 44v180H100z M212 104v44h44"/>
+    <path d="M126 178h102 M126 208h102 M126 238h102 M126 268h72"/>
+    <path d="M210 184h112l44 44v180H210z M322 184v44h44"/>
+    <path d="m236 263 9 9 17-19 M277 263h62 m-103 40 9 9 17-19 M277 303h62 m-103 40 9 9 17-19 M277 343h62"/>
+  </g>
+</svg>

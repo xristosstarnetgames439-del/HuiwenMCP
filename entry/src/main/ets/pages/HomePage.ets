@@ -358,7 +358,7 @@ struct HomePage {
     Row({ space: 24 }) {
       // 除窄侧栏及间距外，介绍区与主功能区按 3:7 分配剩余宽度。
       Stack({ alignContent: Alignment.Center }) {
-        // 底图允许裁切外围留白，独立矢量符号始终等比例居中。
+        // 同名 base/dark 资源随外观切换，底图裁切留白，符号始终等比例居中。
         Image($r('app.media.home_brand_background'))
           .width('100%')
           .height('100%')
@@ -378,14 +378,14 @@ struct HomePage {
             .maxFontSize(48)
             .maxLines(1)
             .fontWeight(FontWeight.Bold)
-            .fontColor('#183153')
+            .fontColor($r('app.color.home_intro_title'))
           Column({ space: 20 }) {
             Text('PDF 与 Markdown 的阅读和转换工具')
               .fontSize(20)
-              .fontColor('#4B6080')
+              .fontColor($r('app.color.home_secondary'))
             Text('汇集千文 · 连通万物')
               .fontSize(16)
-              .fontColor('#667B98')
+              .fontColor($r('app.color.home_intro_muted'))
           }
           .width('100%')
           .alignItems(HorizontalAlign.Start)
@@ -398,7 +398,7 @@ struct HomePage {
       }
       .layoutWeight(3)
       .height('100%')
-      .backgroundColor('#DFE4EA')
+      .backgroundColor($r('app.color.home_intro'))
       .borderRadius(24)
       .clip(true)
 

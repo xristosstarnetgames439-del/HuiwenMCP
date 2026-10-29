@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="500" viewBox="0 0 1000 500">
+  <desc>首页独立矢量无穷符号：等比例居中，柔白色连续曲线，中央黑色雾带与背景柔雾同为45度、连续渐隐。</desc>
+  <defs>
+    <linearGradient id="glint" x1="0" y1="-250" x2="1000" y2="750" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e1e5e9"/>
+      <stop offset="0.1" stop-color="#e1e5e9"/>
+      <stop offset="0.15" stop-color="#e1e5e9"/>
+      <stop offset="0.2" stop-color="#dfe3e7"/>
+      <stop offset="0.24" stop-color="#dadee2"/>
+      <stop offset="0.28" stop-color="#cfd3d7"/>
+      <stop offset="0.32" stop-color="#b9bdc2"/>
+      <stop offset="0.35" stop-color="#9fa4a8"/>
+      <stop offset="0.38" stop-color="#8e9297"/>
+      <stop offset="0.4" stop-color="#868b90"/>
+      <stop offset="0.42" stop-color="#7e8388"/>
+      <stop offset="0.44" stop-color="#71767c"/>
+      <stop offset="0.46" stop-color="#5f6369"/>
+      <stop offset="0.475" stop-color="#51565c"/>
+      <stop offset="0.49" stop-color="#484d53"/>
+      <stop offset="0.5" stop-color="#464b51"/>
+      <stop offset="0.51" stop-color="#484d53"/>
+      <stop offset="0.525" stop-color="#51565c"/>
+      <stop offset="0.54" stop-color="#5f6369"/>
+      <stop offset="0.56" stop-color="#71767c"/>
+      <stop offset="0.58" stop-color="#7e8388"/>
+      <stop offset="0.6" stop-color="#868b90"/>
+      <stop offset="0.62" stop-color="#8e9297"/>
+      <stop offset="0.65" stop-color="#9fa4a8"/>
+      <stop offset="0.68" stop-color="#b9bdc2"/>
+      <stop offset="0.72" stop-color="#cfd3d7"/>
+      <stop offset="0.76" stop-color="#dadee2"/>
+      <stop offset="0.8" stop-color="#dfe3e7"/>
+      <stop offset="0.85" stop-color="#e1e5e9"/>
+      <stop offset="0.9" stop-color="#e1e5e9"/>
+      <stop offset="1" stop-color="#e1e5e9"/>
+    </linearGradient>
+  </defs>
+  <path d="M500 250C420 156 350 100 260 100C150 100 90 161 90 250C90 339 150 400 260 400C350 400 420 344 500 250C580 156 650 100 740 100C850 100 910 161 910 250C910 339 850 400 740 400C650 400 580 344 500 250"
+        fill="none" stroke="url(#glint)" stroke-width="92" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

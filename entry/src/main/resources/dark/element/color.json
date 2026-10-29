@@ -26,7 +26,15 @@
     },
     {
       "name": "home_intro",
-      "value": "#222D3D"
+      "value": "#2B323A"
+    },
+    {
+      "name": "home_intro_title",
+      "value": "#E1E5E9"
+    },
+    {
+      "name": "home_intro_muted",
+      "value": "#A3AEBB"
     },
     {
       "name": "home_sidebar",
