@@ -14,6 +14,7 @@ set(workspace_sources
     src/workspace/ConversionWindow.cpp
     src/sourceView/SourceDocumentView.cpp
     src/sourceView/PdfPreviewWidget.cpp
+    src/sourceView/PdfRenderWindow.cpp
     src/resultView/MarkdownResultView.cpp
     src/resultView/MarkdownPreviewWidget.cpp
     src/components/FileCard.cpp

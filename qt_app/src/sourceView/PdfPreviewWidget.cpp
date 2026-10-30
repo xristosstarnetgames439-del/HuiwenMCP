@@ -1,5 +1,6 @@
 /* PDFium 仅在后台任务中调用；窗口线程只排版和绘制 QImage。 */
 #include "PdfPreviewWidget.h"
+#include "PdfRenderWindow.h"
 #include "components/scrollBar/DocumentScrollBar.h"
 #include <fpdfview.h>
 #include <QApplication>
@@ -8,12 +9,12 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <QPainter>
-#include <QPaintEvent>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QScopedValueRollback>
 #include <QShowEvent>
 #include <QWheelEvent>
+#include <QVBoxLayout>
 #include <QtConcurrent>
 #include <algorithm>
 #include <cmath>
@@ -146,7 +147,23 @@ PdfPreviewWidget::PdfPreviewWidget(QWidget *parent)
     // 滚动值按逻辑像素计量，Qt 默认的单步 1 不适合文档阅读。
     verticalScrollBar()->setSingleStep(40);
     viewport()->setBackgroundRole(QPalette::Window);
-    viewport()->setAttribute(Qt::WA_OpaquePaintEvent);
+    viewport()->setAutoFillBackground(true);
+    renderWindow_ = new PdfRenderWindow(this, [this](QPainter &painter, const QRegion &region)
+                                        { paintDocument(painter, region); });
+    auto *container = QWidget::createWindowContainer(renderWindow_, viewport());
+    // 只创建视口容器的原生节点，避免把整个分栏和工作区提升为不透明原生窗口。
+    container->setAttribute(Qt::WA_DontCreateNativeAncestors);
+    container->setFocusPolicy(Qt::StrongFocus);
+    auto *viewportLayout = new QVBoxLayout(viewport());
+    viewportLayout->setContentsMargins(0, 0, 0, 0);
+    viewportLayout->setSpacing(0);
+    viewportLayout->addWidget(container);
+    connect(renderWindow_, &QWindow::visibleChanged, this,
+            [this](bool visible)
+            {
+                if (visible)
+                    emit previewReadyChanged(isPreviewReady());
+            });
     scrollAnimation_.setDuration(100);
     scrollAnimation_.setEasingCurve(QEasingCurve::OutCubic);
     inertiaTimer_.setSingleShot(true);
@@ -156,9 +173,31 @@ PdfPreviewWidget::PdfPreviewWidget(QWidget *parent)
     connect(verticalScrollBar(), &QScrollBar::actionTriggered, this,
             &PdfPreviewWidget::stopScrolling);
     setAccessibleName(QStringLiteral("PDF 正文预览"));
+    // 尺寸持续变化时只按约一帧处理一次最新布局，避免每个鼠标事件都遍历所有页。
+    layoutTimer_.setSingleShot(true);
+    layoutTimer_.setInterval(16);
+    layoutTimer_.setTimerType(Qt::PreciseTimer);
+    connect(&layoutTimer_, &QTimer::timeout, this,
+            [this]
+            {
+                layoutPages();
+                renderWindow_->invalidate();
+                publishScrollPosition();
+            });
     resizeTimer_.setSingleShot(true);
     resizeTimer_.setInterval(150);
-    connect(&resizeTimer_, &QTimer::timeout, this, &PdfPreviewWidget::requestRender);
+    connect(&resizeTimer_, &QTimer::timeout, this,
+            [this]
+            {
+                if (layoutTimer_.isActive())
+                {
+                    layoutPages();
+                    publishScrollPosition();
+                }
+                // 停止缩放后重绘一次，恢复平滑采样；高清页面继续由后台补齐。
+                renderWindow_->invalidate();
+                requestRender();
+            });
     scrollReportTimer_.setSingleShot(true);
     scrollReportTimer_.setInterval(16);
     connect(&scrollReportTimer_, &QTimer::timeout, this, &PdfPreviewWidget::publishScrollPosition);
@@ -172,14 +211,14 @@ PdfPreviewWidget::PdfPreviewWidget(QWidget *parent)
                     {
                         message_ = result.error;
                         emit previewReadyChanged(false);
-                        viewport()->update();
+                        renderWindow_->invalidate();
                     }
                     else if (result.page < 0)
                     {
                         message_.clear();
                         pageSizes_ = result.pageSizes;
                         layoutPages();
-                        viewport()->update();
+                        renderWindow_->invalidate();
                         emit documentOpened(path_);
                         emit previewReadyChanged(isPreviewReady());
                     }
@@ -189,9 +228,9 @@ PdfPreviewWidget::PdfPreviewWidget(QWidget *parent)
                     {
                         images_.insert(result.page, new QImage(result.image),
                                        static_cast<int>(result.image.sizeInBytes()));
-                        viewport()->update(pageRects_[result.page]
-                                               .translated(0, -verticalScrollBar()->value())
-                                               .toAlignedRect());
+                        renderWindow_->invalidate(pageRects_[result.page]
+                                                      .translated(0, -verticalScrollBar()->value())
+                                                      .toAlignedRect());
                     }
                 }
                 taskPending_ = false;
@@ -201,6 +240,8 @@ PdfPreviewWidget::PdfPreviewWidget(QWidget *parent)
 
 PdfPreviewWidget::~PdfPreviewWidget()
 {
+    // 子窗口晚于业务成员销毁，先解除绘制和输入回调，避免关闭期间回访本对象。
+    renderWindow_->stopRendering();
     // 退出窗口时等待当前任务；任务只持有共享文档，不访问 QWidget。
     watcher_.waitForFinished();
 }
@@ -223,6 +264,7 @@ void PdfPreviewWidget::setDocument(const QString &path)
     pageRects_.clear();
     images_.clear();
     document_.reset();
+    layoutTimer_.stop();
     resizeTimer_.stop();
     verticalScrollBar()->setRange(0, 0);
     emit previewReadyChanged(false);
@@ -230,7 +272,7 @@ void PdfPreviewWidget::setDocument(const QString &path)
     message_ = loadPending_ ? QStringLiteral("正在打开 PDF…") : QString();
     if (loadPending_)
         document_ = std::make_shared<PdfPreviewDocument>();
-    viewport()->update();
+    renderWindow_->invalidate();
     requestRender();
 }
 
@@ -242,7 +284,7 @@ bool PdfPreviewWidget::isPreviewReady() const
 void PdfPreviewWidget::publishScrollPosition()
 {
     scrollReportTimer_.stop();
-    if (!isPreviewReady() || applyingScroll_)
+    if (!isPreviewReady() || applyingScroll_ || layoutTimer_.isActive())
         return;
     const int page = qMin(firstVisiblePage(), pageRects_.size() - 1);
     const auto &rect = pageRects_[page];
@@ -278,6 +320,7 @@ int PdfPreviewWidget::firstVisiblePage() const
 
 void PdfPreviewWidget::layoutPages()
 {
+    layoutTimer_.stop();
     stopScrolling();
     QScopedValueRollback<bool> applying(applyingScroll_, true);
     layoutError_.clear();
@@ -390,10 +433,10 @@ void PdfPreviewWidget::requestRender()
     }
 }
 
-void PdfPreviewWidget::paintEvent(QPaintEvent *event)
+void PdfPreviewWidget::paintDocument(QPainter &painter, const QRegion &region)
 {
-    QPainter painter(viewport());
-    painter.fillRect(event->rect(), palette().color(QPalette::Window));
+    for (const QRect &rect : region)
+        painter.fillRect(rect, palette().color(QPalette::Window));
     painter.setPen(QColor("#667B98"));
     const QString message = layoutError_.isEmpty() ? message_ : layoutError_;
     if (!message.isEmpty())
@@ -405,12 +448,13 @@ void PdfPreviewWidget::paintEvent(QPaintEvent *event)
     }
     const int offset = verticalScrollBar()->value();
     const qreal bottom = offset + viewport()->height();
-    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    // 拖动时快速绘制缓存位图，避免界面线程持续执行大图平滑缩放。
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, !resizeTimer_.isActive());
     for (int page = firstVisiblePage(); page < pageRects_.size() && pageRects_[page].top() < bottom;
          ++page)
     {
         const QRectF rect = pageRects_[page].translated(0, -offset);
-        if (!event->region().intersects(rect.toAlignedRect()))
+        if (!region.intersects(rect.toAlignedRect()))
             continue;
         painter.fillRect(rect, Qt::white);
         if (const QImage *image = images_.object(page))
@@ -425,10 +469,10 @@ void PdfPreviewWidget::paintEvent(QPaintEvent *event)
 void PdfPreviewWidget::resizeEvent(QResizeEvent *event)
 {
     QAbstractScrollArea::resizeEvent(event);
+    stopScrolling();
     resizeTimer_.start();
-    layoutPages();
-    viewport()->update();
-    publishScrollPosition();
+    if (!layoutTimer_.isActive())
+        layoutTimer_.start();
 }
 
 void PdfPreviewWidget::showEvent(QShowEvent *event)
@@ -442,6 +486,8 @@ void PdfPreviewWidget::showEvent(QShowEvent *event)
 void PdfPreviewWidget::hideEvent(QHideEvent *event)
 {
     stopScrolling();
+    layoutTimer_.stop();
+    resizeTimer_.stop();
     scrollReportTimer_.stop();
     emit previewReadyChanged(false);
     QAbstractScrollArea::hideEvent(event);
@@ -583,9 +629,9 @@ void PdfPreviewWidget::wheelEvent(QWheelEvent *event)
 void PdfPreviewWidget::scrollContentsBy(int dx, int dy)
 {
     if (isPreviewReady())
-        viewport()->scroll(dx, dy);
+        renderWindow_->scrollBy(dx, dy);
     else
-        viewport()->update();
+        renderWindow_->invalidate();
     requestRender();
     if (!applyingScroll_ && !scrollReportTimer_.isActive())
         scrollReportTimer_.start();

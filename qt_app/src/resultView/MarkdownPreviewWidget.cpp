@@ -1,6 +1,7 @@
 /* 直接读取 MD 原文，交给内嵌 CEF 的离线页面渲染。 */
 #include "MarkdownPreviewWidget.h"
 #include <QApplication>
+#include <QDebug>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QHideEvent>
@@ -31,6 +32,7 @@
 #include <atomic>
 #include <functional>
 #include <hilog/log.h>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -217,20 +219,29 @@ class PreviewClient final : public CefClient,
             CefRuntime::instance().finishClose();
         }
     }
-    void geometry(const QRect &bounds, bool visible, bool active)
+    void geometry(const QRect &bounds, bool visible)
     {
-        if (!browser_)
+        // Qt 和 CEF 分属不同线程；队列里只留一个任务，未执行的尺寸直接替换为最新值。
+        std::lock_guard<std::mutex> lock(geometryMutex_);
+        requestedBounds_ = bounds;
+        requestedVisible_ = visible;
+        if (geometryQueued_)
             return;
-        using namespace EMBEDDED_WINDOW_ADAPTER;
-        auto *node = reinterpret_cast<Node *>(browser_->GetHost()->GetWindowHandle());
-        if (!node)
-            return;
-        EWAdapterC::moveNode(node, bounds.x(), bounds.y());
-        EWAdapterC::resizeNode(node, bounds.width(), bounds.height());
-        EWAdapterC::setNodeVisibility(node, visible && loaded_ && !closing_);
-        browser_->GetHost()->WasHidden(!visible || !active);
-        browser_->GetHost()->NotifyMoveOrResizeStarted();
-        browser_->GetHost()->WasResized();
+        geometryQueued_ = true;
+        CefRefPtr<PreviewClient> self(this);
+        postCef(
+            [self]
+            {
+                QRect bounds;
+                bool visible;
+                {
+                    std::lock_guard<std::mutex> lock(self->geometryMutex_);
+                    bounds = self->requestedBounds_;
+                    visible = self->requestedVisible_;
+                    self->geometryQueued_ = false;
+                }
+                self->applyGeometry(bounds, visible);
+            });
     }
     void close()
     {
@@ -346,6 +357,39 @@ class PreviewClient final : public CefClient,
     }
 
   private:
+    void applyGeometry(const QRect &bounds, bool visible)
+    {
+        // 只在 CEF UI 线程访问浏览器和已应用状态；关闭后的排队任务不能再触碰原生节点。
+        if (!browser_ || closing_ || CefRuntime::instance().stopping)
+            return;
+        const bool move = !bounds.isEmpty() && bounds.topLeft() != appliedBounds_.topLeft();
+        const bool resize = !bounds.isEmpty() && bounds.size() != appliedBounds_.size();
+        visible = visible && loaded_ && !bounds.isEmpty();
+        if (!move && !resize && visible == nodeVisible_)
+            return;
+        using namespace EMBEDDED_WINDOW_ADAPTER;
+        auto *node = reinterpret_cast<Node *>(browser_->GetHost()->GetWindowHandle());
+        if (!node)
+            return;
+        if ((move && !EWAdapterC::moveNode(node, bounds.x(), bounds.y())) ||
+            (resize && !EWAdapterC::resizeNode(node, bounds.width(), bounds.height())) ||
+            (visible != nodeVisible_ && !EWAdapterC::setNodeVisibility(node, visible)))
+        {
+            qWarning() << "HUIWEN_CEF stage=geometry_failed boundsWindow=" << bounds;
+            return;
+        }
+        if (!bounds.isEmpty())
+            appliedBounds_ = bounds;
+        nodeVisible_ = visible;
+        // 原生窗口依赖 XComponent 的尺寸通知；WasResized/WasHidden 仅用于离屏渲染。
+    }
+
+    std::mutex geometryMutex_;
+    QRect requestedBounds_;
+    bool requestedVisible_ = false;
+    bool geometryQueued_ = false;
+    QRect appliedBounds_;
+    bool nodeVisible_ = false;
     QString url_;
     QString text_;
     Notice notice_;
@@ -368,7 +412,6 @@ class MarkdownPreviewWidget::Private
     QString url;
     bool valid = false;
     bool ready = false;
-    bool active = true;
     int generation = 0;
 #ifdef Q_OS_OPENHARMONY
     CefRefPtr<PreviewClient> client;
@@ -583,8 +626,7 @@ void MarkdownPreviewWidget::syncGeometry()
         const QRect bounds = browserRect();
         const bool visible =
             !bounds.isEmpty() && isVisible() && window()->isVisible() && !window()->isMinimized();
-        const bool active = d_->active;
-        postCef([client, bounds, visible, active] { client->geometry(bounds, visible, active); });
+        client->geometry(bounds, visible);
     }
 #endif
 }
@@ -624,13 +666,8 @@ bool MarkdownPreviewWidget::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched == window())
     {
-        if (event->type() == QEvent::WindowActivate)
-            d_->active = true;
-        else if (event->type() == QEvent::WindowDeactivate)
-            d_->active = false;
         if (event->type() == QEvent::Resize || event->type() == QEvent::Move ||
-            event->type() == QEvent::WindowStateChange || event->type() == QEvent::WindowActivate ||
-            event->type() == QEvent::WindowDeactivate)
+            event->type() == QEvent::WindowStateChange)
             syncGeometry();
     }
     return QWidget::eventFilter(watched, event);

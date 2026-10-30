@@ -1,7 +1,5 @@
 /* 分隔线拖动反馈：5px 主线与随鼠标移动的 10×180px 圆角指示条。 */
 #include "WorkspaceSplitter.h"
-#include <QDebug>
-#include <QElapsedTimer>
 #include <QEvent>
 #include <QMouseEvent>
 #include <QPainter>
@@ -55,9 +53,6 @@ class WorkspaceSplitterHandle : public QSplitterHandle
             static_cast<WorkspaceSplitter *>(splitter())->raiseAbovePreview();
             dragging_ = true;
             pointerY_ = event->localPos().y();
-            dragLogClock_.invalidate();
-            qInfo() << "HUIWEN_RESIZE stage=splitter_begin rectWindow="
-                    << QRect(mapTo(window(), QPoint()), size()) << "sizes=" << splitter()->sizes();
             update();
         }
         QSplitterHandle::mousePressEvent(event);
@@ -65,20 +60,12 @@ class WorkspaceSplitterHandle : public QSplitterHandle
 
     void mouseMoveEvent(QMouseEvent *event) override
     {
-        const QRect oldRect(mapTo(window(), QPoint()), size());
         if (dragging_)
         {
             pointerY_ = event->localPos().y();
             update();
         }
         QSplitterHandle::mouseMoveEvent(event);
-        if (dragging_ && (!dragLogClock_.isValid() || dragLogClock_.elapsed() >= 100))
-        {
-            dragLogClock_.start();
-            qInfo() << "HUIWEN_RESIZE stage=splitter_move oldWindow=" << oldRect
-                    << "newWindow=" << QRect(mapTo(window(), QPoint()), size())
-                    << "pointerY=" << pointerY_ << "sizes=" << splitter()->sizes();
-        }
     }
 
     void mouseReleaseEvent(QMouseEvent *event) override
@@ -89,9 +76,6 @@ class WorkspaceSplitterHandle : public QSplitterHandle
             update();
         }
         QSplitterHandle::mouseReleaseEvent(event);
-        if (event->button() == Qt::LeftButton)
-            qInfo() << "HUIWEN_RESIZE stage=splitter_end rectWindow="
-                    << QRect(mapTo(window(), QPoint()), size()) << "sizes=" << splitter()->sizes();
     }
 
     bool event(QEvent *event) override
@@ -100,7 +84,6 @@ class WorkspaceSplitterHandle : public QSplitterHandle
             (event->type() == QEvent::UngrabMouse || event->type() == QEvent::WindowDeactivate ||
              event->type() == QEvent::Hide))
         {
-            qInfo() << "HUIWEN_RESIZE stage=splitter_cancel reason=" << event->type();
             dragging_ = false;
             update();
         }
@@ -110,7 +93,6 @@ class WorkspaceSplitterHandle : public QSplitterHandle
   private:
     bool dragging_ = false;
     qreal pointerY_ = 0;
-    QElapsedTimer dragLogClock_;
 };
 } // namespace
 

@@ -12,6 +12,8 @@
 #include <memory>
 
 struct PdfPreviewDocument;
+class PdfRenderWindow;
+class QPainter;
 struct PdfPreviewResult
 {
     quint64 generation = 0;
@@ -38,7 +40,6 @@ class PdfPreviewWidget : public QAbstractScrollArea
     void scrollPositionChanged(int page, double fraction, double progress);
 
   protected:
-    void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void showEvent(QShowEvent *event) override;
     void hideEvent(QHideEvent *event) override;
@@ -46,6 +47,7 @@ class PdfPreviewWidget : public QAbstractScrollArea
     void scrollContentsBy(int dx, int dy) override;
 
   private:
+    void paintDocument(QPainter &painter, const QRegion &region);
     void layoutPages();
     void requestRender();
     void stopScrolling();
@@ -65,6 +67,7 @@ class PdfPreviewWidget : public QAbstractScrollArea
     QVector<QRectF> pageRects_;
     QCache<int, QImage> images_{64 * 1024 * 1024};
     QFutureWatcher<PdfPreviewResult> watcher_;
+    PdfRenderWindow *renderWindow_;
     QPropertyAnimation scrollAnimation_;
     QTimer inertiaTimer_;
     QElapsedTimer velocityClock_;
@@ -72,6 +75,7 @@ class PdfPreviewWidget : public QAbstractScrollArea
     qreal velocityDistance_ = 0;
     qreal scrollRemainder_ = 0;
     bool systemMomentum_ = false;
+    QTimer layoutTimer_;
     QTimer resizeTimer_;
     QTimer scrollReportTimer_;
 };

@@ -59,15 +59,15 @@ ConversionWindow::ConversionWindow(QWidget *parent)
     status_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     layout->addWidget(status_, 0);
     connect(splitter_, &QSplitter::splitterMoved, this, [this] { placeConvertButton(); });
-    connect(source_, &SourceDocumentView::previewReadyChanged, this, [this] { refreshScrollSync(); });
-    connect(result_, &MarkdownResultView::previewReadyChanged, this,
-            [this]
-            {
-                // CEF 新建节点后重置原生层级，拖动中的位置变化沿用该层级。
-                splitter_->raiseAbovePreview();
-                refreshScrollSync();
-                placeConvertButton();
-            });
+    const auto refreshPreview = [this]
+    {
+        // PDF 或 CEF 新建原生节点后，恢复分隔条和悬浮按钮的层级。
+        splitter_->raiseAbovePreview();
+        refreshScrollSync();
+        placeConvertButton();
+    };
+    connect(source_, &SourceDocumentView::previewReadyChanged, this, refreshPreview);
+    connect(result_, &MarkdownResultView::previewReadyChanged, this, refreshPreview);
     connect(functionBar_, &FunctionBar::scrollSyncChanged, this, &ConversionWindow::refreshScrollSync);
     connect(source_, &SourceDocumentView::scrollPositionChanged, this,
             [this](int page, double fraction, double progress)

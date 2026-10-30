@@ -10,6 +10,7 @@ if(NOT EXISTS "${PDFIUM_LIBRARY}")
 endif()
 add_executable(pdf_preview_check pdf_preview_check.cpp
     ../src/sourceView/PdfPreviewWidget.cpp ../src/sourceView/PdfPreviewWidget.h
+    ../src/sourceView/PdfRenderWindow.cpp
     ../src/sourceView/SourceDocumentView.cpp ../src/sourceView/SourceDocumentView.h
     ../src/components/scrollBar/DocumentScrollBar.cpp
     ../src/components/FileCard.cpp ../resources/file-icons.qrc)
