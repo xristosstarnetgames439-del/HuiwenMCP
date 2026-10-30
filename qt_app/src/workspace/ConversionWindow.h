@@ -8,7 +8,7 @@ class ConvertButton;
 class FunctionBar;
 class ConversionService;
 class SandboxService;
-class QSplitter;
+class WorkspaceSplitter;
 class QLabel;
 
 class ConversionWindow : public QWidget
@@ -28,7 +28,7 @@ class ConversionWindow : public QWidget
     bool scrollSyncEnabled() const;
     void selectDocument();
     void restoreDocument(const DocumentItem &document);
-    QSplitter *splitter_;
+    WorkspaceSplitter *splitter_;
     SourceDocumentView *source_;
     MarkdownResultView *result_;
     ConvertButton *button_;

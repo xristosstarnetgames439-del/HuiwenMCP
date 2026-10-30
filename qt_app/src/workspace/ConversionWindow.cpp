@@ -63,6 +63,8 @@ ConversionWindow::ConversionWindow(QWidget *parent)
     connect(result_, &MarkdownResultView::previewReadyChanged, this,
             [this]
             {
+                // CEF 新建节点后重置原生层级，拖动中的位置变化沿用该层级。
+                splitter_->raiseAbovePreview();
                 refreshScrollSync();
                 placeConvertButton();
             });

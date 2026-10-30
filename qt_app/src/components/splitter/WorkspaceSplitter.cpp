@@ -1,9 +1,13 @@
 /* 分隔线拖动反馈：5px 主线与随鼠标移动的 10×180px 圆角指示条。 */
 #include "WorkspaceSplitter.h"
+#include <QDebug>
+#include <QElapsedTimer>
 #include <QEvent>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QShowEvent>
 #include <QSplitterHandle>
+#include <QWindow>
 
 namespace
 {
@@ -12,10 +16,21 @@ class WorkspaceSplitterHandle : public QSplitterHandle
   public:
     explicit WorkspaceSplitterHandle(QSplitter *parent) : QSplitterHandle(Qt::Horizontal, parent)
     {
+#ifdef Q_OS_OPENHARMONY
+        // 与 CEF 同为原生子节点，只覆盖分隔条自身区域，不依赖整窗重绘提升层级。
+        setAttribute(Qt::WA_DontCreateNativeAncestors);
+        setAttribute(Qt::WA_NativeWindow);
+#endif
         setCursor(Qt::SplitHCursor);
     }
 
   protected:
+    void showEvent(QShowEvent *event) override
+    {
+        QSplitterHandle::showEvent(event);
+        static_cast<WorkspaceSplitter *>(splitter())->raiseAbovePreview();
+    }
+
     void paintEvent(QPaintEvent *) override
     {
         QPainter painter(this);
@@ -37,8 +52,12 @@ class WorkspaceSplitterHandle : public QSplitterHandle
     {
         if (event->button() == Qt::LeftButton)
         {
+            static_cast<WorkspaceSplitter *>(splitter())->raiseAbovePreview();
             dragging_ = true;
             pointerY_ = event->localPos().y();
+            dragLogClock_.invalidate();
+            qInfo() << "HUIWEN_RESIZE stage=splitter_begin rectWindow="
+                    << QRect(mapTo(window(), QPoint()), size()) << "sizes=" << splitter()->sizes();
             update();
         }
         QSplitterHandle::mousePressEvent(event);
@@ -46,12 +65,20 @@ class WorkspaceSplitterHandle : public QSplitterHandle
 
     void mouseMoveEvent(QMouseEvent *event) override
     {
+        const QRect oldRect(mapTo(window(), QPoint()), size());
         if (dragging_)
         {
             pointerY_ = event->localPos().y();
             update();
         }
         QSplitterHandle::mouseMoveEvent(event);
+        if (dragging_ && (!dragLogClock_.isValid() || dragLogClock_.elapsed() >= 100))
+        {
+            dragLogClock_.start();
+            qInfo() << "HUIWEN_RESIZE stage=splitter_move oldWindow=" << oldRect
+                    << "newWindow=" << QRect(mapTo(window(), QPoint()), size())
+                    << "pointerY=" << pointerY_ << "sizes=" << splitter()->sizes();
+        }
     }
 
     void mouseReleaseEvent(QMouseEvent *event) override
@@ -62,6 +89,9 @@ class WorkspaceSplitterHandle : public QSplitterHandle
             update();
         }
         QSplitterHandle::mouseReleaseEvent(event);
+        if (event->button() == Qt::LeftButton)
+            qInfo() << "HUIWEN_RESIZE stage=splitter_end rectWindow="
+                    << QRect(mapTo(window(), QPoint()), size()) << "sizes=" << splitter()->sizes();
     }
 
     bool event(QEvent *event) override
@@ -70,6 +100,7 @@ class WorkspaceSplitterHandle : public QSplitterHandle
             (event->type() == QEvent::UngrabMouse || event->type() == QEvent::WindowDeactivate ||
              event->type() == QEvent::Hide))
         {
+            qInfo() << "HUIWEN_RESIZE stage=splitter_cancel reason=" << event->type();
             dragging_ = false;
             update();
         }
@@ -79,6 +110,7 @@ class WorkspaceSplitterHandle : public QSplitterHandle
   private:
     bool dragging_ = false;
     qreal pointerY_ = 0;
+    QElapsedTimer dragLogClock_;
 };
 } // namespace
 
@@ -90,3 +122,17 @@ WorkspaceSplitter::WorkspaceSplitter(QWidget *parent) : QSplitter(Qt::Horizontal
 }
 
 QSplitterHandle *WorkspaceSplitter::createHandle() { return new WorkspaceSplitterHandle(this); }
+
+void WorkspaceSplitter::raiseAbovePreview()
+{
+    for (int index = 1; index < count(); ++index)
+    {
+        auto *divider = handle(index);
+        divider->raise();
+#ifdef Q_OS_OPENHARMONY
+        // 显式提升原生层级，CEF 重新创建后 Qt 的普通兄弟顺序可能没有变化。
+        if (divider->isVisible() && divider->windowHandle())
+            divider->windowHandle()->raise();
+#endif
+    }
+}

@@ -6,6 +6,7 @@ class WorkspaceSplitter : public QSplitter
 {
   public:
     explicit WorkspaceSplitter(QWidget *parent = nullptr);
+    void raiseAbovePreview();
 
   protected:
     QSplitterHandle *createHandle() override;
