@@ -7,7 +7,7 @@ class FileMenu : public SelectionMenu
 {
     Q_OBJECT
   public:
-    explicit FileMenu(QWidget *parent = nullptr);
+    explicit FileMenu(const QString &mode, QWidget *parent = nullptr);
     void setDocumentState(bool hasDocument, bool busy);
     void setPreviewMode(bool preview);
 
@@ -17,6 +17,7 @@ class FileMenu : public SelectionMenu
     void directoryRequested(bool output);
 
   private:
+    bool conversion_;
     QAction *placeholderAction_;
     QAction *previewAction_;
     QAction *inputDirectoryAction_;

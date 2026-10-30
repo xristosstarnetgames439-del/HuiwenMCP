@@ -9,6 +9,7 @@ import { listRecentWorkspaces, RecentWorkspace, validateRecentWorkspace } from '
 import { HomeMoreMenu, HOME_MENU_WIDTH, HOME_MENU_GAP } from '../components/HomeMoreMenu';
 import { HomeAboutDialog } from '../components/HomeAboutDialog';
 import { applyHomeAppearance, HomeAppearance } from '../utils/HomeAppearance';
+import { DocumentKind, DocumentMode } from '../utils/DocumentStore';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 @Entry
@@ -106,7 +107,8 @@ struct HomePage {
     }
   }
 
-  private async openWorkspace(taskPath: string = ''): Promise<void> {
+  private async openWorkspace(taskPath: string = '', mode: DocumentMode = DocumentMode.Convert,
+    kind: DocumentKind = DocumentKind.PDF): Promise<void> {
     if (this.workspaceLaunching) {
       return;
     }
@@ -124,14 +126,17 @@ struct HomePage {
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       if (taskPath !== '') {
-        await validateRecentWorkspace(context, taskPath);
+        const document = await validateRecentWorkspace(context, taskPath);
+        // 最近任务的类型取自磁盘校验结果，不能把 MD 预览误送到 PDF 转化布局。
+        mode = document.mode === DocumentMode.Preview ? DocumentMode.Preview : DocumentMode.Convert;
+        kind = document.kind === DocumentKind.Markdown ? DocumentKind.Markdown : DocumentKind.PDF;
       }
       if (!this.homeVisible || !this.workspaceLaunching || launchVersion !== this.launchVersion) {
         return;
       }
       await context.startAbility({
         bundleName: 'cn.com.HuiWenMCP', abilityName: 'QtWorkspaceAbility',
-        parameters: { huiwenTaskPath: taskPath }
+        parameters: { huiwenTaskPath: taskPath, huiwenMode: mode, huiwenKind: kind }
       });
     } catch (error) {
       if (launchVersion === this.launchVersion) {
@@ -165,6 +170,9 @@ struct HomePage {
       },
       onConvertRequested: () => {
         this.openWorkspace();
+      },
+      onPreviewRequested: (kind: DocumentKind) => {
+        this.openWorkspace('', DocumentMode.Preview, kind);
       }
     })
   }

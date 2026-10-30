@@ -54,36 +54,38 @@ SandboxService::SandboxService(QObject *parent) : QObject(parent)
 #endif
 }
 
-void SandboxService::selectPdf()
+void SandboxService::selectDocument(const QString &kind, const QString &mode)
 {
 #ifdef Q_OS_OPENHARMONY
-    if (!QtBridge::instance().request("pick"))
+    if (!QtBridge::instance().request("pick", QJsonObject{{"kind", kind}, {"mode", mode}}))
     {
         emit selectionFinished();
         emit failed(QStringLiteral("鸿蒙文件选择接口尚未就绪"));
     }
 #else
-    const QString file =
-        QFileDialog::getOpenFileName(nullptr, QStringLiteral("请选择 PDF"), {}, "PDF (*.pdf)");
+    const bool markdown = kind == "md";
+    const QString file = QFileDialog::getOpenFileName(
+        nullptr, markdown ? QStringLiteral("请选择 Markdown") : QStringLiteral("请选择 PDF"), {},
+        markdown ? "Markdown (*.md *.markdown)" : "PDF (*.pdf)");
     if (!file.isEmpty())
     {
         DocumentItem document;
         try
         {
             const QString root = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-            document = SandboxStore::createDocument(root, QFileInfo(file).fileName(), "pdf", "convert");
+            document = SandboxStore::createDocument(root, QFileInfo(file).fileName(), kind, mode);
             QFile source(file);
             QSaveFile target(document.inputPath);
             if (!source.open(QIODevice::ReadOnly) || !target.open(QIODevice::WriteOnly))
-                throw std::runtime_error("无法打开 PDF 或沙箱副本");
+                throw std::runtime_error("无法打开文档或沙箱副本");
             while (!source.atEnd())
             {
                 const auto bytes = source.read(64 * 1024);
                 if (source.error() != QFileDevice::NoError || target.write(bytes) != bytes.size())
-                    throw std::runtime_error("复制 PDF 到应用数据目录失败");
+                    throw std::runtime_error("复制文档到应用数据目录失败");
             }
             if (!target.commit())
-                throw std::runtime_error("保存沙箱 PDF 失败");
+                throw std::runtime_error("保存沙箱文档失败");
             markUsed(document);
             document.lastUsedAt = QFileInfo(document.taskPath).lastModified().toMSecsSinceEpoch();
             emit documentSelected(document);
@@ -128,9 +130,9 @@ void SandboxService::finishRestoration(const DocumentItem &document, const QStri
         }
     }
 #ifdef Q_OS_OPENHARMONY
-    const QString reply =
-        QString::fromUtf8(QJsonDocument(QJsonObject{{"taskPath", document.taskPath}, {"error", message}})
-                              .toJson(QJsonDocument::Compact));
+    const QString reply = QString::fromUtf8(
+        QJsonDocument(QJsonObject{{"taskPath", document.taskPath}, {"error", message}})
+            .toJson(QJsonDocument::Compact));
     if (!QtBridge::instance().request("restoreResult", reply))
         message = QStringLiteral("无法通知首页任务恢复结果");
 #endif
@@ -151,7 +153,8 @@ void SandboxService::openResultLocation(const QString &path)
         qInfo().noquote() << "HUIWEN_OUTPUT stage=locate_requested platform=harmony path=" << path;
 #else
     const QFileInfo output(path);
-    if (!output.isAbsolute() || output.suffix().compare(QStringLiteral("md"), Qt::CaseInsensitive) != 0 ||
+    if (!output.isAbsolute() ||
+        output.suffix().compare(QStringLiteral("md"), Qt::CaseInsensitive) != 0 ||
         !output.isFile() || !output.isReadable() || output.size() <= 0)
     {
         emit failed(QStringLiteral("Markdown 文件不存在、为空或不可读取：") + path);
@@ -166,10 +169,12 @@ void SandboxService::openTaskDirectory(const DocumentItem &document, bool output
 {
     if (document.taskPath.isEmpty() || document.inputPath.isEmpty())
     {
-        emit failed(QStringLiteral("请先选择 PDF"));
+        emit failed(QStringLiteral("请先选择文档"));
         return;
     }
-    const QString path = document.taskPath + (output ? "/output" : "/input");
+    const QString path = document.mode == "preview"
+                             ? document.taskPath
+                             : document.taskPath + (output ? "/output" : "/input");
 #ifdef Q_OS_OPENHARMONY
     // ArkTS 使用自己的 filesDir 再经 NAPI 校验目录归属后调用系统文件管理器。
     if (!QtBridge::instance().request("openDirectory", path))

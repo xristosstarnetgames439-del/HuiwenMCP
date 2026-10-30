@@ -6,18 +6,18 @@
 class SandboxStore
 {
   public:
-    static DocumentItem createDocument(const QString &filesDir, const QString &name, const QString &kind,
-                                       const QString &mode);
+    static DocumentItem createDocument(const QString &filesDir, const QString &name,
+                                       const QString &kind, const QString &mode);
     static void discardDocument(const DocumentItem &document);
-    static QVector<DocumentItem> recentDocuments(const QString &filesDir, const QString &mode = "all",
-                                                 int limit = 20);
+    static QVector<DocumentItem> recentDocuments(const QString &filesDir,
+                                                 const QString &mode = "all", int limit = 20);
     static QVector<DocumentItem> findEditDocuments(const QString &filesDir, const QString &name);
-    // 重新校验原任务并读取输入、已有输出；仅恢复已接入的 PDF→MD，不创建目录或更新时间。
+    // 重新校验 PDF/MD 预览或 PDF→MD 任务，不创建目录或更新时间。
     static DocumentItem loadTask(const QString &filesDir, const QString &taskPath);
     // 路径可以是任务目录或其中的文件；读取列表本身不更新时间。
     static void markUsed(const QString &filesDir, const QString &path);
     static void markUsed(const DocumentItem &document);
     static QString validateOutput(const QString &filesDir, const QString &path);
-    // 仅接受 edit/convert 当前任务下真实存在的 input 或 output 目录，不要求已有输出文件。
+    // 接受 preview 任务根目录或 edit/convert 的 input/output，不要求已有输出文件。
     static QString validateTaskDirectory(const QString &filesDir, const QString &path);
 };

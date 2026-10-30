@@ -1,4 +1,6 @@
 // 格式弹窗内容：与系统背板共用固定宽度，背景、圆角和阴影由外层统一绘制。
+import { DocumentKind } from '../utils/DocumentStore';
+
 export const HOME_FORMAT_DIALOG_WIDTH: number = 360;
 
 export enum HomeFeature {
@@ -14,9 +16,10 @@ export struct HomeFormatDialog {
   @Prop title: string = '';
   onCloseRequested: () => void = () => {};
   onConvertRequested: () => void = () => {};
+  onPreviewRequested: (kind: DocumentKind) => void = () => {};
 
   @Builder
-  formatItem(name: string, icon: Resource) {
+  formatItem(name: string, icon: Resource, kind: DocumentKind) {
     Column({ space: 10 }) {
       Image(icon)
         .width(48)
@@ -29,6 +32,12 @@ export struct HomeFormatDialog {
     }
     .padding(12)
     .justifyContent(FlexAlign.Center)
+    // 预览复用同一个工作区；Word 和编辑仍只保留格式展示。
+    .onClick(() => {
+      if (this.feature === HomeFeature.Preview && kind !== DocumentKind.Word) {
+        this.onPreviewRequested(kind);
+      }
+    })
   }
 
   build() {
@@ -70,11 +79,11 @@ export struct HomeFormatDialog {
   @Builder
   formatOptions() {
     if (this.feature === HomeFeature.Preview || this.feature === HomeFeature.Edit) {
-      // 当前格式仅展示，不拉起文件选择器或预览、编辑页面。
+      // 只有 PDF/MD 预览接入跳转；文件在 Qt 工作区内选择。
       Row({ space: 12 }) {
-        this.formatItem('Word', $r('app.media.home_format_word'))
-        this.formatItem('PDF', $r('app.media.home_format_pdf'))
-        this.formatItem('MD', $r('app.media.home_format_md'))
+        this.formatItem('Word', $r('app.media.home_format_word'), DocumentKind.Word)
+        this.formatItem('PDF', $r('app.media.home_format_pdf'), DocumentKind.PDF)
+        this.formatItem('MD', $r('app.media.home_format_md'), DocumentKind.Markdown)
       }
     } else if (this.feature === HomeFeature.Convert) {
       Button({ type: ButtonType.Normal }) {

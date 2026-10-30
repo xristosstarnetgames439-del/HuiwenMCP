@@ -1,9 +1,10 @@
-/* 当前仅接入转化模式；查看方式与业务模式分别维护，非当前模式不提供更换文件。 */
+/* 预览与转化共用文件菜单；仅当前业务模式提供更换文件，模式切换继续保留 TODO。 */
 #include "FileMenu.h"
 #include <QAction>
 #include <QActionGroup>
 
-FileMenu::FileMenu(QWidget *parent) : SelectionMenu(parent)
+FileMenu::FileMenu(const QString &mode, QWidget *parent)
+    : SelectionMenu(parent), conversion_(mode == "convert")
 {
     auto *viewMenu = new SelectionMenu(this);
     viewMenu->setTitle(QStringLiteral("查看模式"));
@@ -22,61 +23,47 @@ FileMenu::FileMenu(QWidget *parent) : SelectionMenu(parent)
     // TODO: 接入编辑视图；当前仅提供占位图和只读预览。
     editView->setEnabled(false);
     editView->setToolTip(QStringLiteral("编辑视图尚未接入"));
-    connect(placeholderAction_, &QAction::triggered, this,
-            [this]
-            {
-                setPreviewMode(false);
-            });
-    connect(previewAction_, &QAction::triggered, this,
-            [this]
-            {
-                setPreviewMode(true);
-            });
+    connect(placeholderAction_, &QAction::triggered, this, [this] { setPreviewMode(false); });
+    connect(previewAction_, &QAction::triggered, this, [this] { setPreviewMode(true); });
 
     auto *directoryMenu = new SelectionMenu(this);
     directoryMenu->setTitle(QStringLiteral("文件目录"));
     addMenu(directoryMenu);
-    inputDirectoryAction_ = directoryMenu->addAction(QStringLiteral("输入目录"));
+    inputDirectoryAction_ = directoryMenu->addAction(conversion_ ? QStringLiteral("输入目录")
+                                                                 : QStringLiteral("所在目录"));
     outputDirectoryAction_ = directoryMenu->addAction(QStringLiteral("输出目录"));
+    outputDirectoryAction_->setVisible(conversion_);
     connect(inputDirectoryAction_, &QAction::triggered, this,
-            [this]
-            {
-                emit directoryRequested(false);
-            });
+            [this] { emit directoryRequested(false); });
     connect(outputDirectoryAction_, &QAction::triggered, this,
-            [this]
-            {
-                emit directoryRequested(true);
-            });
+            [this] { emit directoryRequested(true); });
 
     auto *modeMenu = new SelectionMenu(this);
     modeMenu->setTitle(QStringLiteral("切换模式"));
     addMenu(modeMenu);
     auto *modes = new QActionGroup(modeMenu);
     modes->setExclusive(true);
-    auto *previewMode = modeMenu->addAction(QStringLiteral("预览模式"));
-    auto *editMode = modeMenu->addAction(QStringLiteral("编辑模式"));
-    // TODO: 接入预览、编辑业务模式切换；暂不改变工作区或创建其他模式的任务。
-    previewMode->setEnabled(false);
-    editMode->setEnabled(false);
-    previewMode->setToolTip(QStringLiteral("业务模式切换尚未接入"));
-    editMode->setToolTip(QStringLiteral("业务模式切换尚未接入"));
-    auto *conversionMenu = new SelectionMenu(modeMenu);
-    conversionMenu->setTitle(QStringLiteral("转化模式"));
-    auto *conversionMode = modeMenu->addMenu(conversionMenu);
-    for (auto *action : {previewMode, editMode, conversionMode})
+    auto *currentMenu = new SelectionMenu(modeMenu);
+    currentMenu->setTitle(conversion_ ? QStringLiteral("转化模式") : QStringLiteral("预览模式"));
+    for (const QString &name :
+         {QStringLiteral("预览模式"), QStringLiteral("编辑模式"), QStringLiteral("转化模式")})
     {
+        const bool current = name == currentMenu->title();
+        auto *action = current ? modeMenu->addMenu(currentMenu) : modeMenu->addAction(name);
         action->setCheckable(true);
+        action->setChecked(current);
+        // TODO: 后续接入业务模式切换，当前只由 ArkTS 启动参数决定模式。
+        action->setEnabled(current);
+        if (!current)
+            action->setToolTip(QStringLiteral("业务模式切换尚未接入"));
         modes->addAction(action);
     }
-    conversionMode->setChecked(true);
-    // 仅当前业务模式拥有更换入口；未来模式切换时再同步菜单归属。
-    replacementAction_ = conversionMenu->addAction(QStringLiteral("更换文件"));
+    replacementAction_ = currentMenu->addAction(QStringLiteral("更换文件"));
     connect(replacementAction_, &QAction::triggered, this, &FileMenu::replacementRequested);
     setDocumentState(false, false);
 }
 
-// 菜单点击与程序切换共用入口，只改变查看方式，不改变转化业务模式。
+// 菜单点击与程序切换共用入口，只改变查看方式，不改变业务模式。
 void FileMenu::setPreviewMode(bool preview)
 {
     (preview ? previewAction_ : placeholderAction_)->setChecked(true);
@@ -88,6 +75,6 @@ void FileMenu::setDocumentState(bool hasDocument, bool busy)
     placeholderAction_->setEnabled(!busy);
     previewAction_->setEnabled(hasDocument && !busy);
     inputDirectoryAction_->setEnabled(hasDocument);
-    outputDirectoryAction_->setEnabled(hasDocument);
+    outputDirectoryAction_->setEnabled(conversion_ && hasDocument);
     replacementAction_->setEnabled(!busy);
 }

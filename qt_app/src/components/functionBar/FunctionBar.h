@@ -8,7 +8,7 @@ class FunctionBar : public QToolBar
 {
     Q_OBJECT
   public:
-    explicit FunctionBar(QWidget *parent = nullptr);
+    explicit FunctionBar(const QString &mode, QWidget *parent = nullptr);
     FileMenu *fileMenu() const;
     bool isScrollSynchronized() const;
 
@@ -17,5 +17,5 @@ class FunctionBar : public QToolBar
 
   private:
     FileMenu *fileMenu_;
-    QAction *synchronizedAction_;
+    QAction *synchronizedAction_ = nullptr;
 };

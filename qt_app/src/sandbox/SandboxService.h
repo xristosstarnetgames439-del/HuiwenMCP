@@ -8,7 +8,7 @@ class SandboxService : public QObject
     Q_OBJECT
   public:
     explicit SandboxService(QObject *parent = nullptr);
-    void selectPdf();
+    void selectDocument(const QString &kind, const QString &mode);
     void openResultLocation(const QString &path);
     void openTaskDirectory(const DocumentItem &document, bool output);
     void markUsed(const DocumentItem &document);

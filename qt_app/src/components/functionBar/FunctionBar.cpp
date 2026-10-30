@@ -11,7 +11,8 @@
 #include <QVariant>
 #include <algorithm>
 
-FunctionBar::FunctionBar(QWidget *parent) : QToolBar(parent), fileMenu_(new FileMenu(this))
+FunctionBar::FunctionBar(const QString &mode, QWidget *parent)
+    : QToolBar(parent), fileMenu_(new FileMenu(mode, this))
 {
     setObjectName(QStringLiteral("workspaceFunctionBar"));
     setMovable(false);
@@ -19,15 +20,15 @@ FunctionBar::FunctionBar(QWidget *parent) : QToolBar(parent), fileMenu_(new File
     setContextMenuPolicy(Qt::PreventContextMenu);
     setFixedHeight(72);
     setContentsMargins(0, 0, 0, 0);
-    setStyleSheet(
-        QStringLiteral("QToolBar#workspaceFunctionBar { background: #F2F3F5; border: none; "
-                       "margin: 0; padding: 0; spacing: 0; }"
-                       "QToolBar#workspaceFunctionBar QToolButton { background: transparent; border: none; "
-                       "margin: 0; padding: 0 20px; color: #34445C; font-size: 28px; font-weight: normal; }"
-                       "QToolBar#workspaceFunctionBar QToolButton[selected=\"true\"] "
-                       "{ background: #DCE1E8; }"
-                       "QToolBar#workspaceFunctionBar QToolButton::menu-indicator "
-                       "{ image: none; width: 0; height: 0; }"));
+    setStyleSheet(QStringLiteral(
+        "QToolBar#workspaceFunctionBar { background: #F2F3F5; border: none; "
+        "margin: 0; padding: 0; spacing: 0; }"
+        "QToolBar#workspaceFunctionBar QToolButton { background: transparent; border: none; "
+        "margin: 0; padding: 0 20px; color: #34445C; font-size: 28px; font-weight: normal; }"
+        "QToolBar#workspaceFunctionBar QToolButton[selected=\"true\"] "
+        "{ background: #DCE1E8; }"
+        "QToolBar#workspaceFunctionBar QToolButton::menu-indicator "
+        "{ image: none; width: 0; height: 0; }"));
     // 同时清除工具条布局的原生默认留白，按钮背景才能覆盖整个高度。
     layout()->setContentsMargins(0, 0, 0, 0);
     layout()->setSpacing(0);
@@ -49,16 +50,8 @@ FunctionBar::FunctionBar(QWidget *parent) : QToolBar(parent), fileMenu_(new File
             button->style()->polish(button);
             button->update();
         };
-        connect(menu, &QMenu::aboutToShow, button,
-                [setSelected]
-                {
-                    setSelected(true);
-                });
-        connect(menu, &QMenu::aboutToHide, button,
-                [setSelected]
-                {
-                    setSelected(false);
-                });
+        connect(menu, &QMenu::aboutToShow, button, [setSelected] { setSelected(true); });
+        connect(menu, &QMenu::aboutToHide, button, [setSelected] { setSelected(false); });
         // 先应用继承样式再测量 28px 字体，避免按默认小字号分配宽度而裁切文字。
         button->ensurePolished();
         const int textWidth = std::max(button->fontMetrics().horizontalAdvance(text),
@@ -67,6 +60,9 @@ FunctionBar::FunctionBar(QWidget *parent) : QToolBar(parent), fileMenu_(new File
         addWidget(button);
     };
     addMenuButton(QStringLiteral("文件"), fileMenu_);
+    // 单栏没有联动目标，保留同一个功能条，但不创建双栏滚动菜单。
+    if (mode == "preview")
+        return;
     auto *menu = new SelectionMenu(this);
     auto *modes = new QActionGroup(menu);
     modes->setExclusive(true);
@@ -82,12 +78,9 @@ FunctionBar::FunctionBar(QWidget *parent) : QToolBar(parent), fileMenu_(new File
     addMenuButton(QStringLiteral("滚动设置"), menu);
 }
 
-FileMenu *FunctionBar::fileMenu() const
-{
-    return fileMenu_;
-}
+FileMenu *FunctionBar::fileMenu() const { return fileMenu_; }
 
 bool FunctionBar::isScrollSynchronized() const
 {
-    return synchronizedAction_->isChecked();
+    return synchronizedAction_ && synchronizedAction_->isChecked();
 }

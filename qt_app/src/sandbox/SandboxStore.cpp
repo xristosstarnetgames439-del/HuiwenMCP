@@ -11,10 +11,7 @@
 
 namespace
 {
-void fail(const QString &message)
-{
-    throw std::runtime_error(message.toStdString());
-}
+void fail(const QString &message) { throw std::runtime_error(message.toStdString()); }
 
 bool validMode(const QString &mode)
 {
@@ -24,16 +21,16 @@ bool validMode(const QString &mode)
 QString rootPath(const QString &filesDir, bool create = false)
 {
     const QFileInfo info(filesDir);
-    if (filesDir.contains(QChar::Null) || !info.isAbsolute() || (create && !QDir().mkpath(filesDir)) ||
-        info.canonicalFilePath().isEmpty() || !info.isDir())
+    if (filesDir.contains(QChar::Null) || !info.isAbsolute() ||
+        (create && !QDir().mkpath(filesDir)) || info.canonicalFilePath().isEmpty() || !info.isDir())
         fail(QStringLiteral("应用沙箱目录无效"));
     return info.canonicalFilePath();
 }
 
 QString safeName(const QString &name)
 {
-    if (name.isEmpty() || name == "." || name == ".." || name.contains('/') || name.contains('\\') ||
-        name.contains(QChar::Null))
+    if (name.isEmpty() || name == "." || name == ".." || name.contains('/') ||
+        name.contains('\\') || name.contains(QChar::Null))
         fail(QStringLiteral("所选文件名无效"));
     QString result = name;
     for (int index = 0; index < result.size(); ++index)
@@ -89,8 +86,8 @@ QString checkedTask(const QString &root, const QString &path)
     const QString canonical = info.canonicalFilePath();
     const QStringList parts = QDir(root).relativeFilePath(canonical).split('/');
     if (!info.isAbsolute() || path.contains(QChar::Null) || path.contains('\\') ||
-        QDir::cleanPath(path) != path || canonical.isEmpty() || parts.size() < 2 || !validMode(parts[0]) ||
-        !validTaskName(parts[1]))
+        QDir::cleanPath(path) != path || canonical.isEmpty() || parts.size() < 2 ||
+        !validMode(parts[0]) || !validTaskName(parts[1]))
         fail(QStringLiteral("文件不属于本应用任务目录"));
     const QString category = root + "/" + parts[0];
     const QString task = category + "/" + parts[1];
@@ -123,11 +120,12 @@ QVector<DocumentItem> scan(const QString &filesDir, const QString &mode)
         {
             if (!validTaskName(task.fileName()))
                 continue;
-            const QString inputDir =
-                category == "preview" ? task.absoluteFilePath() : task.absoluteFilePath() + "/input";
+            const QString inputDir = category == "preview" ? task.absoluteFilePath()
+                                                           : task.absoluteFilePath() + "/input";
             if (QFileInfo(inputDir).canonicalFilePath() != inputDir)
                 continue;
-            const auto inputs = QDir(inputDir).entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Name);
+            const auto inputs =
+                QDir(inputDir).entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Name);
             for (const QFileInfo &input : inputs)
             {
                 const QString kind = kindOf(input.fileName());
@@ -163,18 +161,19 @@ QVector<DocumentItem> scan(const QString &filesDir, const QString &mode)
         }
     }
     std::sort(result.begin(), result.end(),
-              [](const DocumentItem &a, const DocumentItem &b)
-              {
-                  return a.lastUsedAt == b.lastUsedAt ? a.taskPath > b.taskPath : a.lastUsedAt > b.lastUsedAt;
+              [](const DocumentItem &a, const DocumentItem &b) {
+                  return a.lastUsedAt == b.lastUsedAt ? a.taskPath > b.taskPath
+                                                      : a.lastUsedAt > b.lastUsedAt;
               });
     return result;
 }
 } // namespace
 
-DocumentItem SandboxStore::createDocument(const QString &filesDir, const QString &name, const QString &kind,
-                                          const QString &mode)
+DocumentItem SandboxStore::createDocument(const QString &filesDir, const QString &name,
+                                          const QString &kind, const QString &mode)
 {
-    if (!validMode(mode) || kindOf(name) != kind || kind.isEmpty() || (mode == "convert" && kind != "pdf"))
+    if (!validMode(mode) || kindOf(name) != kind || kind.isEmpty() ||
+        (mode == "convert" && kind != "pdf"))
         fail(QStringLiteral("文档格式或操作类型不支持"));
     const QString fileName = safeName(name);
     const QString root = rootPath(filesDir, true);
@@ -237,7 +236,8 @@ void SandboxStore::discardDocument(const DocumentItem &document)
     QDir().rmdir(document.taskPath);
 }
 
-QVector<DocumentItem> SandboxStore::recentDocuments(const QString &filesDir, const QString &mode, int limit)
+QVector<DocumentItem> SandboxStore::recentDocuments(const QString &filesDir, const QString &mode,
+                                                    int limit)
 {
     if (limit < 1 || limit > 100)
         fail(QStringLiteral("最近任务数量必须在 1 到 100 之间"));
@@ -253,9 +253,7 @@ QVector<DocumentItem> SandboxStore::findEditDocuments(const QString &filesDir, c
     auto documents = scan(filesDir, "edit");
     documents.erase(std::remove_if(documents.begin(), documents.end(),
                                    [&fileName](const DocumentItem &item)
-                                   {
-                                       return QFileInfo(item.inputPath).fileName() != fileName;
-                                   }),
+                                   { return QFileInfo(item.inputPath).fileName() != fileName; }),
                     documents.end());
     return documents;
 }
@@ -275,15 +273,18 @@ DocumentItem SandboxStore::loadTask(const QString &filesDir, const QString &task
 {
     const QString root = rootPath(filesDir);
     const QString task = checkedTask(root, taskPath);
-    if (task != taskPath || QDir(root).relativeFilePath(task).section('/', 0, 0) != "convert")
-        fail(QStringLiteral("当前仅支持恢复 PDF 转 MD 转化任务"));
-    const QString inputDir = validateTaskDirectory(root, task + "/input");
-    const QString outputDir = validateTaskDirectory(root, task + "/output");
+    const QString mode = QDir(root).relativeFilePath(task).section('/', 0, 0);
+    if (task != taskPath || (mode != "preview" && mode != "convert"))
+        fail(QStringLiteral("当前仅支持 PDF/MD 预览和 PDF 转 MD 任务"));
+    // 预览文档直接位于任务目录，转化任务继续使用 input/output；校验不创建目录。
+    const QString inputDir =
+        mode == "preview" ? task : validateTaskDirectory(root, task + "/input");
     DocumentItem document;
     const auto inputs = QDir(inputDir).entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Name);
     for (const QFileInfo &input : inputs)
     {
-        if (kindOf(input.fileName()) != "pdf")
+        const QString kind = kindOf(input.fileName());
+        if (kind != "pdf" && !(mode == "preview" && kind == "md"))
             continue;
         // 恢复前校验运行在 NAPI 工作线程；QFile 是 QObject，会提前占用 Qt 主线程标识。
         const QByteArray path = input.absoluteFilePath().toUtf8();
@@ -292,19 +293,24 @@ DocumentItem SandboxStore::loadTask(const QString &filesDir, const QString &task
         if (!document.inputPath.isEmpty() || !input.isReadable() || input.size() <= 0 ||
             input.canonicalFilePath() != input.absoluteFilePath() || !file.get(firstByte))
             fail(QStringLiteral("任务输入不唯一、已失效或无法读取"));
-        document.kind = "pdf";
+        document.kind = kind;
         document.name = input.fileName();
         document.inputPath = input.absoluteFilePath();
     }
     if (document.inputPath.isEmpty())
-        fail(QStringLiteral("原任务的 PDF 已被删除或无法读取"));
-    document.outputPath = outputDir + "/" + QFileInfo(document.name).completeBaseName() + ".md";
-    const QFileInfo output(document.outputPath);
-    if (output.isSymLink() || (output.exists() && (!output.isFile() || !output.isReadable() ||
-                                                   output.canonicalFilePath() != document.outputPath)))
-        fail(QStringLiteral("原任务的 Markdown 路径已失效"));
+        fail(QStringLiteral("原任务的文档已被删除或无法读取"));
+    if (mode == "convert")
+    {
+        const QString outputDir = validateTaskDirectory(root, task + "/output");
+        document.outputPath = outputDir + "/" + QFileInfo(document.name).completeBaseName() + ".md";
+        const QFileInfo output(document.outputPath);
+        if (output.isSymLink() ||
+            (output.exists() && (!output.isFile() || !output.isReadable() ||
+                                 output.canonicalFilePath() != document.outputPath)))
+            fail(QStringLiteral("原任务的 Markdown 路径已失效"));
+    }
     document.taskPath = task;
-    document.mode = "convert";
+    document.mode = mode;
     document.openPath = document.inputPath;
     document.lastUsedAt = QFileInfo(task).lastModified().toMSecsSinceEpoch();
     return document;
@@ -313,7 +319,8 @@ DocumentItem SandboxStore::loadTask(const QString &filesDir, const QString &task
 void SandboxStore::markUsed(const DocumentItem &document)
 {
     if (!document.taskPath.isEmpty())
-        markUsed(QFileInfo(QFileInfo(document.taskPath).absolutePath()).absolutePath(), document.taskPath);
+        markUsed(QFileInfo(QFileInfo(document.taskPath).absolutePath()).absolutePath(),
+                 document.taskPath);
 }
 
 QString SandboxStore::validateOutput(const QString &filesDir, const QString &path)
@@ -328,8 +335,9 @@ QString SandboxStore::validateOutput(const QString &filesDir, const QString &pat
     QFile file(path);
     if (path.contains(QChar::Null) || path.contains('\\') || !output.isAbsolute() ||
         QDir::cleanPath(path) != path || (!legacy && !current) ||
-        output.suffix().compare(QStringLiteral("md"), Qt::CaseInsensitive) != 0 || !output.isFile() ||
-        output.size() <= 0 || !file.open(QIODevice::ReadOnly) || file.read(1).isEmpty())
+        output.suffix().compare(QStringLiteral("md"), Qt::CaseInsensitive) != 0 ||
+        !output.isFile() || output.size() <= 0 || !file.open(QIODevice::ReadOnly) ||
+        file.read(1).isEmpty())
         fail(QStringLiteral("Markdown 文件不属于本应用输出目录，或文件不存在、为空、无法读取"));
     if (current)
         checkedTask(root, canonical);
@@ -340,13 +348,15 @@ QString SandboxStore::validateTaskDirectory(const QString &filesDir, const QStri
 {
     const QString root = rootPath(filesDir);
     const QFileInfo directory(path);
-    if (!directory.isAbsolute() || !directory.isDir() || !directory.isReadable() || directory.isSymLink() ||
-        directory.canonicalFilePath() != path)
+    if (!directory.isAbsolute() || !directory.isDir() || !directory.isReadable() ||
+        directory.isSymLink() || directory.canonicalFilePath() != path)
         fail(QStringLiteral("任务目录不存在、不可读取或包含路径别名"));
     const QString task = checkedTask(root, path);
     const QString mode = QFileInfo(QFileInfo(task).absolutePath()).fileName();
     const QString leaf = QDir(task).relativeFilePath(path);
+    if (mode == "preview" && path == task)
+        return path;
     if ((mode != "edit" && mode != "convert") || (leaf != "input" && leaf != "output"))
-        fail(QStringLiteral("仅允许打开本应用任务的输入或输出目录"));
+        fail(QStringLiteral("仅允许打开预览任务目录或编辑／转化任务的输入输出目录"));
     return path;
 }

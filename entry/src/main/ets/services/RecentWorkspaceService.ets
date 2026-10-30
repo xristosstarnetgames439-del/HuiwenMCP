@@ -43,13 +43,15 @@ export async function listRecentWorkspaces(context: common.UIAbilityContext,
       mode: document.mode,
       formatLabel: formatLabel(document),
       timeLabel: formatTime(document.lastUsedAt),
-      // TODO: 对应工作区实现后，开放预览和编辑任务的恢复。
-      canOpen: document.mode === 'convert' && document.kind === 'pdf'
+      // 预览和转化进入同一个 Qt 工作区；编辑及 Word 引擎尚未接入。
+      canOpen: (document.mode === 'convert' && document.kind === 'pdf') ||
+        (document.mode === 'preview' && (document.kind === 'pdf' || document.kind === 'md'))
     };
   });
 }
 
 // 拉起 Qt 前先筛出失效任务；Qt Ability 仍会再次校验，避免使用页面缓存的路径。
-export async function validateRecentWorkspace(context: common.UIAbilityContext, taskPath: string): Promise<void> {
-  await nativeBridge.harmonyLoadTask(context.getApplicationContext().filesDir, taskPath);
+export function validateRecentWorkspace(context: common.UIAbilityContext,
+  taskPath: string): Promise<HarmonySandboxDocument> {
+  return nativeBridge.harmonyLoadTask(context.getApplicationContext().filesDir, taskPath);
 }

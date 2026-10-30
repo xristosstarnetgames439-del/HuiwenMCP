@@ -12,6 +12,8 @@ import { CefWorkspaceProxy } from '../utils/CefPlatform';
 interface WorkspaceEvent {
   action: string;
   path: string;
+  kind?: string;
+  mode?: string;
 }
 
 interface WorkspaceReply extends HarmonySandboxDocument {
@@ -31,6 +33,8 @@ export default class QtWorkspaceAbility extends UIAbility {
   private pickerBusy: boolean = false;
   private workspaceReady: boolean = false;
   private pendingTask: string = '';
+  private mode: string = DocumentMode.Convert;
+  private kind: string = DocumentKind.PDF;
   private restoring: boolean = false;
   private destroyed: boolean = false;
   private closing: boolean = false;
@@ -52,6 +56,8 @@ export default class QtWorkspaceAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     super.onCreate(want, launchParam);
     this.pendingTask = this.requestedTask(want);
+    this.mode = String(want.parameters?.huiwenMode ?? DocumentMode.Convert);
+    this.kind = String(want.parameters?.huiwenKind ?? DocumentKind.PDF);
   }
 
   private requestedTask(want: Want): string {
@@ -75,6 +81,9 @@ export default class QtWorkspaceAbility extends UIAbility {
         this.context.getApplicationContext().filesDir, taskPath);
       if (this.destroyed || this.closing || this.pendingTask !== taskPath) {
         return;
+      }
+      if (document.mode !== this.mode || document.kind !== this.kind) {
+        throw new Error('任务类型与当前工作区不一致');
       }
       const reply: WorkspaceReply = {
         action: 'restore', name: document.name, kind: document.kind, mode: document.mode,
@@ -100,8 +109,10 @@ export default class QtWorkspaceAbility extends UIAbility {
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     try {
-      // Qt 窗口可独立启动，资源准备不依赖首页 Ability 的生命周期。
-      nativeBridge.configurePython(this.context.resourceManager, this.context.cacheDir);
+      // 只有转化模式部署 Python 业务包，独立预览直接使用 PDFium／CEF。
+      if (this.mode === DocumentMode.Convert) {
+        nativeBridge.configurePython(this.context.resourceManager, this.context.cacheDir);
+      }
       this.cefProxy = new CefWorkspaceProxy(this.context, windowStage, (): void => {
         this.returnHome();
       });
@@ -111,7 +122,7 @@ export default class QtWorkspaceAbility extends UIAbility {
         this.handleWorkspaceEvent(json).catch((error: Error) => {
           hilog.error(0xFF00, 'QtWorkspace', 'HUIWEN_QT_EVENT_FAILED: %{public}s', error.message);
         });
-      });
+      }, this.mode, this.kind);
       hilog.info(0xFF00, 'QtWorkspace', 'HUIWEN_QT_START');
     } catch (error) {
       const message = (error as Error).message;
@@ -171,7 +182,12 @@ export default class QtWorkspaceAbility extends UIAbility {
     try {
       if (event.action === 'pick') {
         this.pickerBusy = true;
-        const document = await pickDocumentToSandbox(this.context, DocumentKind.PDF, DocumentMode.Convert);
+        if (event.mode !== this.mode || event.kind !== this.kind) {
+          throw new Error('选取请求与当前工作区类型不一致');
+        }
+        const kind = this.kind === DocumentKind.Markdown ? DocumentKind.Markdown : DocumentKind.PDF;
+        const mode = this.mode === DocumentMode.Preview ? DocumentMode.Preview : DocumentMode.Convert;
+        const document = await pickDocumentToSandbox(this.context, kind, mode);
         if (document !== null) {
           reply.name = document.name;
           reply.inputPath = document.inputPath;
@@ -259,11 +275,18 @@ export default class QtWorkspaceAbility extends UIAbility {
       this.context.getApplicationContext().eventHub.emit('huiwen.workspace.failed', '工作区正在关闭，请稍后再打开');
       return;
     }
-    qpa.handleOnNewWant(want, launchParam);
     if (this.restoring || this.pickerBusy) {
       this.context.getApplicationContext().eventHub.emit('huiwen.workspace.failed', '工作区正在处理文件，请稍后重试');
       return;
     }
+    // 模式在本次窗口生命周期内固定；跨模式仍通过关闭回首页后再次打开，避免抢先释放 CEF。
+    if (String(want.parameters?.huiwenMode ?? DocumentMode.Convert) !== this.mode ||
+      String(want.parameters?.huiwenKind ?? DocumentKind.PDF) !== this.kind) {
+      this.context.getApplicationContext().eventHub.emit('huiwen.workspace.failed',
+        '请先关闭当前工作区，再打开其他模式或文档类型');
+      return;
+    }
+    qpa.handleOnNewWant(want, launchParam);
     this.pendingTask = this.requestedTask(want);
     if (this.workspaceReady) {
       this.deliverPendingTask();

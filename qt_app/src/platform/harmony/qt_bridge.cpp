@@ -11,18 +11,24 @@ namespace
 std::mutex callbackMutex;
 napi_threadsafe_function callback = nullptr;
 quint64 generation = 0;
+QJsonObject options;
+
+QString ReadOption(napi_env env, napi_value value)
+{
+    size_t size = 0;
+    if (napi_get_value_string_utf8(env, value, nullptr, 0, &size) != napi_ok || size > 16)
+        return {};
+    char text[17]{};
+    napi_get_value_string_utf8(env, value, text, sizeof(text), &size);
+    return QString::fromUtf8(text, static_cast<int>(size));
+}
 
 // 冷启动时 Qt 尚未运行，由 main 主动读取；重入时排队通知 Qt 线程重建窗体。
 void NotifyWorkspaceChanged()
 {
     if (auto *app = QCoreApplication::instance())
         QMetaObject::invokeMethod(
-            app,
-            []
-            {
-                emit QtBridge::instance().workspaceChanged();
-            },
-            Qt::QueuedConnection);
+            app, [] { emit QtBridge::instance().workspaceChanged(); }, Qt::QueuedConnection);
 }
 
 void CallArkTs(napi_env env, napi_value fn, void *, void *data)
@@ -52,25 +58,35 @@ napi_value Clear(napi_env env, napi_callback_info)
 
 napi_value Register(napi_env env, napi_callback_info info)
 {
-    size_t count = 1;
-    napi_value fn, name;
+    size_t count = 3;
+    napi_value arguments[3], name;
     napi_valuetype type;
-    napi_get_cb_info(env, info, &count, &fn, nullptr, nullptr);
-    if (count != 1 || napi_typeof(env, fn, &type) != napi_ok || type != napi_function)
+    if (napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr) != napi_ok || count != 3 ||
+        napi_typeof(env, arguments[0], &type) != napi_ok || type != napi_function)
     {
-        napi_throw_type_error(env, nullptr, "需要工作区事件回调");
+        napi_throw_type_error(env, nullptr, "需要工作区事件回调、业务模式和文档类型");
+        return nullptr;
+    }
+    const QString mode = ReadOption(env, arguments[1]);
+    const QString kind = ReadOption(env, arguments[2]);
+    if (!((mode == "preview" && (kind == "pdf" || kind == "md")) ||
+          (mode == "convert" && kind == "pdf")))
+    {
+        napi_throw_type_error(env, nullptr, "工作区仅支持 PDF/MD 预览和 PDF 转 MD");
         return nullptr;
     }
     Clear(env, info);
     napi_create_string_utf8(env, "HuiwenQtWorkspace", NAPI_AUTO_LENGTH, &name);
     std::lock_guard<std::mutex> lock(callbackMutex);
-    if (napi_create_threadsafe_function(env, fn, nullptr, name, 0, 1, nullptr, nullptr, nullptr, CallArkTs,
-                                        &callback) != napi_ok)
+    if (napi_create_threadsafe_function(env, arguments[0], nullptr, name, 0, 1, nullptr, nullptr,
+                                        nullptr, CallArkTs, &callback) != napi_ok)
     {
         napi_throw_error(env, nullptr, "无法注册工作区回调");
         return nullptr;
     }
     napi_unref_threadsafe_function(env, callback);
+    // 参数与回调同时发布，冷启动和再次进入都直接创建正确的一栏／两栏工作区。
+    options = QJsonObject{{"mode", mode}, {"kind", kind}};
     ++generation;
     NotifyWorkspaceChanged();
     napi_value result;
@@ -127,12 +143,25 @@ quint64 QtBridge::workspaceId()
     return callback ? generation : 0;
 }
 
+QJsonObject QtBridge::workspaceOptions()
+{
+    std::lock_guard<std::mutex> lock(callbackMutex);
+    return options;
+}
+
 bool QtBridge::request(const QString &action, const QString &path)
 {
-    auto json = std::make_unique<QByteArray>(
-        QJsonDocument(QJsonObject{{"action", action}, {"path", path}}).toJson(QJsonDocument::Compact));
+    return request(action, QJsonObject{{"path", path}});
+}
+
+bool QtBridge::request(const QString &action, QJsonObject parameters)
+{
+    parameters.insert("action", action);
+    auto json =
+        std::make_unique<QByteArray>(QJsonDocument(parameters).toJson(QJsonDocument::Compact));
     std::lock_guard<std::mutex> lock(callbackMutex);
-    if (!callback || napi_call_threadsafe_function(callback, json.get(), napi_tsfn_nonblocking) != napi_ok)
+    if (!callback ||
+        napi_call_threadsafe_function(callback, json.get(), napi_tsfn_nonblocking) != napi_ok)
         return false;
     json.release();
     return true;

@@ -41,7 +41,10 @@ int main(int argc, char *argv[])
         workspaceId = id;
         if (id)
         {
-            window = std::make_unique<ConversionWindow>();
+            // 复用现有工作区类，只按 ArkTS 的模式、文档类型改变内部栏数和渲染器。
+            const auto options = QtBridge::workspaceOptions();
+            window = std::make_unique<ConversionWindow>(options.value("mode").toString(),
+                                                        options.value("kind").toString());
             window->showMaximized();
             readyTimer.start();
         }
