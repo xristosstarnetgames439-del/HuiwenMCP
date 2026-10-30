@@ -1,4 +1,4 @@
-/* PDF 独立绘图窗口：自有缓冲隔离分隔条像素，保留滚动时的局部画面复用。 */
+/* 通用栅格绘图窗口：独立缓冲隔离相邻原生窗口，复用滚动后的画面。 */
 #pragma once
 #include <QBackingStore>
 #include <QPointer>
@@ -9,11 +9,11 @@
 class QPainter;
 class QWidget;
 
-class PdfRenderWindow final : public QWindow
+class RasterRenderWindow final : public QWindow
 {
   public:
     using Paint = std::function<void(QPainter &, const QRegion &)>;
-    PdfRenderWindow(QWidget *inputTarget, Paint paint);
+    RasterRenderWindow(QWidget *inputTarget, Paint paint);
     void invalidate(const QRegion &region = {});
     void scrollBy(int dx, int dy);
     void stopRendering();

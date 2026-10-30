@@ -20,6 +20,7 @@
 - Qt 开发依赖保存在 `third_party/qt/`，运行库从 `entry/libs/arm64-v8a/` 链接并随 HAP 分发；PDFium fork 保存在 `third_party/pdfium/`，Qt 左侧输入区域已接入其公开 C API 实现正文预览；已完成鸿蒙编译、HAP 打包；系统目录跳转沿用原有实现。
 - DevEco Run 构建前执行 `PrepareNativeDependencies`，按当前 PDFium 源码增量生成 `libpdfium.so`；Qt/NAPI 的 C++ 编译后同步新库到 `libs`。没有保存源码自动构建、应用内动态替换库或保持进程状态的热重载。
 - Qt 工作区默认最大化并保留系统标题栏和窗口边框，输入、输出区域解耦；中部分割线可拖动，悬浮“转化”按钮随分隔线移动。
+- 两侧区域共用 `DocumentView : QStackedWidget`，分别注入 PDF 和 Markdown 渲染器；文件卡片、预览切换、忙碌状态与对外信号集中维护。PDF 继承公共 `RasterDocumentViewport`，复用独立绘图窗口、滚动条和惯性能力；CEF 保留浏览器自身滚动。Word 渲染器尚未接入。本次通用化重构仅完成格式检查，尚未编译、打包或设备验收。
 - 输入文件卡片通过 DocumentStore 获取系统选取授权，再经 NAPI 调用 C++ harmony_sandbox 完成沙箱复制和路径安排。两侧操作统一到顶部“文件”菜单：查看模式默认预览，可切换为占位图；左侧由 PDFium 显示多页 PDF，右侧已有结果时由 CEF 显示 MD。转换成功自动切到预览并隐藏转化按钮；更换文件保留当前查看方式，清空旧结果并恢复按钮，取消选择保留原状态；尚未生成 MD 时仍显示等待提示。PDFium 后台串行渲染可见页，连续尺寸变化合并请求；位图缓存上限为 64 MiB，超长页面降低采样分辨率。Qt ConversionService 仍复用 PythonRunner 转换。本次默认预览及按钮显隐调整仅做格式检查，尚未编译、打包或真机验收。
 - 原有 Python HNP 自检与 PDF 转换已由用户在真机验证成功。新增 Qt 窗口交接、选择与结果位置操作需要真机验收。
 - 汇文 Python 包只公开 `pdf_to_md()`；后续格式在依赖和设备转换通过后再增加。
@@ -65,19 +66,29 @@ HuiWenMCP/
 │   │   └── _markitdown_adapter.py      [已有] 唯一直接调用 MarkItDown 的适配文件
 │   └── pdf2md/convert.py              [已有] pyz 的 __main__，也可供桌面直接执行
 ├── qt_app/                            [已有] Qt Widgets 工作区，鸿蒙共享库/桌面可执行入口
-│   ├── CMakeLists.txt                 构建 huiwen_qt 并链接 PDFium；新增预览尚未编译验证
+│   ├── CMakeLists.txt                 构建 huiwen_qt，链接 Qt、PDFium 与鸿蒙 CEF
 │   ├── main.cpp                       默认最大化并保留系统边框，显示成功后通知结束原首页
-│   ├── tests/                         独立桌面预览回归检查，需宿主 Qt/PDFium
+│   ├── resources/
+│   │   ├── branding/、file-icons/     应用图标及共用文件格式图标
+│   │   └── file-icons.qrc、markdown.qrc 图标与离线 Markdown 页面资源
+│   ├── tests/
+│   │   ├── CMakeLists.txt、pdf_preview_check.cpp 通用 View、PDF 加载与滚动检查
+│   │   └── sandbox_startup/           沙箱启动检查；检查程序均需单独构建运行
 │   └── src/
-│       ├── workspace/ConversionWindow.h/.cpp     主窗口与组件接线
-│       ├── sourceView/
-│       │   ├── SourceDocumentView.h/.cpp 输入卡片、预览切换与文件选择入口
-│       │   ├── PdfPreviewWidget.h/.cpp 后台 PDFium、页面缓存、滚动及尺寸自适应
-│       │   └── PdfRenderWindow.h/.cpp 独立原生画面缓冲、脏区绘制与输入转发
-│       ├── resultView/MarkdownResultView.h/.cpp 输出区域入口
+│       ├── workspace/ConversionWindow.h/.cpp 主窗口、两侧渲染器注入与业务接线
+│       ├── documentView/              不区分输入／输出角色的文档区域
+│       │   ├── DocumentView.h/.cpp    共用卡片、预览切换、忙碌状态与信号
+│       │   ├── DocumentRenderer.h    渲染契约、滚动归属及可选能力配置
+│       │   └── renderers/
+│       │       ├── pdf/PdfPreviewWidget.h/.cpp PDFium、页面排版、后台渲染与缓存
+│       │       └── markdown/MarkdownPreviewWidget.h/.cpp 离线 MD 页面、CEF 画面与生命周期
 │       ├── components/
-│       │   ├── FileCard.h/.cpp         PDF/MD 共用占位卡片
+│       │   ├── FileCard.h/.cpp         共用文件占位卡片，图标与名称由调用方传入
 │       │   ├── ConvertButton.h/.cpp    独立悬浮转化按钮
+│       │   ├── rendering/
+│       │   │   ├── RasterDocumentViewport.h/.cpp 栅格文档共用视口，组合原生窗口与滚动能力
+│       │   │   └── RasterRenderWindow.h/.cpp 独立 QWindow／QBackingStore、脏区与输入转发
+│       │   ├── scrolling/DocumentScrollController.h/.cpp Qt 平滑滚动、触控板采样及可选惯性
 │       │   ├── splitter/WorkspaceSplitter.h/.cpp  分隔线与拖动位置指示条
 │       │   ├── scrollBar/DocumentScrollBar.h/.cpp 文档竖向滚动条样式
 │       │   └── functionBar/
@@ -92,7 +103,8 @@ HuiWenMCP/
 │       └── platform/harmony/
 │           ├── qt_bridge.h/.cpp              Qt ↔ ArkTS 线程桥
 │           ├── harmony_sandbox.h/.cpp        鸿蒙沙箱规则与文件操作
-│           └── harmony_sandbox_napi.cpp      异步导入与输出校验 NAPI
+│           ├── harmony_sandbox_napi.cpp      异步导入与输出校验 NAPI
+│           └── CefSubprocess.cpp            CEF 子进程入口，不承担文档区域布局
 ├── hnp/arm64-v8a/                     [生成] 鸿蒙 Python 运行环境，不进入 Git
 │   └── huiwen_python.hnp               私有 HNP 归档，内部包含：
 │       ├── bin/python3                 Python 解释器
@@ -107,12 +119,15 @@ HuiWenMCP/
 ├── packaging/                         [部分已有] 各平台打包脚本和配置
 │   ├── ohos/                           [已有] HNP 打包脚本、依赖锁定文件及上游补丁
 │   │   └── build_python_bundle.py      生成确定性业务 pyz，不变则保留成品与时间戳
-│   ├── windows/
-│   └── macos/
+│   ├── windows/                        [规划] Windows 发布配置
+│   └── macos/                          [规划] macOS 发布配置
 ├── tests/pdf_samples/                 [规划] 文字、双栏、表格等转换样本
 ├── third_party/
 │   ├── markitdown/                   [子模块] MarkItDown fork
 │   ├── pdfium/                       [子模块] PDFium fork 与鸿蒙构建补丁
+│   ├── markdown/                     [已有] 离线 Markdown 页面源码与依赖锁定
+│   ├── cef/                          [已有] CEF 适配与说明，SDK 由固定依赖包准备
+│   ├── prebuilt/                     [已有] Qt/CEF 固定依赖清单与准备说明
 │   └── qt/                           [本机依赖] Qt 头文件、CMake 配置及宿主工具
 ├── entry/src/main/resources/rawfile/third_party_licenses/ [生成] Qt/PDFium 许可材料，随包分发
 ├── CMakeLists.txt                     [规划] Qt 桌面工程入口
@@ -131,7 +146,7 @@ QPA 在进程内只启动一次 Qt 主循环，CEF 引擎也保留到应用退�
 
 当前 QPA 固定加载 `pages/Index`，不能让该路由同时作为 ArkTS 首页。`EntryAbility` 加载独立的 `pages/HomePage`；`Index.ets` 仅创建 Qt 的 NODE 类型 XComponent。`QtWorkspaceAbility.newLocalStorage()` 提供存储，QPA 写入 `idName` 并传给承载页。若在承载页放首页事件监听，会在 Qt 就绪时把 Qt Ability 也关闭；缺少存储方法则会产生 `newLocalStorage not found`、`Need object` 等日志。
 
-文件选择链为 `SourceDocumentView → SandboxService → QtBridge → QtWorkspaceAbility → DocumentStore`。Qt 请求进入 ArkTS 线程处理；结果经 NAPI 投递到 Qt 线程，不跨线程直接操作界面。新 Ability 使用自己的 Context，首页关闭后文件选择仍可继续。DocumentStore 只保留 Picker、URI 授权打开及关闭；目录、时间戳、命名、最近使用和缓存规则由通用 C++ `SandboxStore` 负责；鸿蒙授权 fd 复制与适配由 `HarmonySandbox` 负责。
+文件选择链为 `DocumentView::cardActivated → ConversionWindow::selectDocument() → SandboxService → QtBridge → QtWorkspaceAbility → DocumentStore`。Qt 请求进入 ArkTS 线程处理；结果经 NAPI 投递到 Qt 线程，不跨线程直接操作界面。新 Ability 使用自己的 Context，首页关闭后文件选择仍可继续。DocumentStore 只保留 Picker、URI 授权打开及关闭；目录、时间戳、命名、最近使用和缓存规则由通用 C++ `SandboxStore` 负责；鸿蒙授权 fd 复制与适配由 `HarmonySandbox` 负责。
 
 仓库中的 `third_party/markitdown` 固定源码版本，**不会把整个第三方 Git 仓库装进应用**。`pack_python_hnp.sh` 只部署 Python 解释器、目标依赖及其原生 `.so` 和自检脚本；`build_python_bundle.py` 把 `markitdown/`、`huiwen_converter/`、固定转换入口及许可材料装入独立 `.pyz`，应用 `markitdown-no-magika.patch`，不修改子模块源码。两个产物随同一个 HAP 分发；NAPI、Qt 应用和最小 Qt 运行库仍按原有方式部署。
 
@@ -158,43 +173,56 @@ QPA 在进程内只启动一次 Qt 主循环，CEF 引擎也保留到应用退�
 - `harmonyValidateOutput(filesDir, path)` 接受新任务的 `convert|edit/<任务>/output/*.md`，兼容历史 `outputs/` 下的文件；仍检查真实路径、目录归属及非空可读 MD。历史数据保留原位，不批量迁移。
 - `harmonyValidateTaskDirectory(filesDir, path)` 直接复用 `SandboxStore::validateTaskDirectory()`，只接受真实可读且不含符号链接或路径别名的 `edit|convert/<任务>/input|output` 目录。与 MD 文件校验分开，因此选取 PDF 后即可请求打开空输出目录；鸿蒙经 `openDirectory` 工作区事件调用系统文件管理器，桌面使用 `QDesktopServices`。
 
-## Qt 工作区包裹关系
+## 窗口包裹图：Qt 工作区
 
-下图表示预览模式下屏幕上的包裹关系；鸿蒙管理系统窗口，Qt 管理工作区布局，PDF 和 MD 各自持有独立画面缓冲。两侧都由 `QStackedWidget` 在文件卡片和正文预览之间切换。
+下图对应当前源码中两侧均显示正文预览时的结构。外层表示平台承载，内层表示 Qt 控件与画面的视觉包裹；`*` 标注的 CEF Surface 只表示画面位置，其实际原生父窗口见图后说明。本次通用化重构仅完成格式检查，不代表已重新完成编译、打包或设备验收。
 
 ```text
-┌ 鸿蒙系统窗口 WindowStage ─────────────────────────────────────────────────────────────────────────┐
-│QtWorkspaceAbility                      最小化 / 最大化 / 关闭                                     │
-│                                                                                                   │
-│┌ Index.ets：XComponent NODE / Qt QPA ──────────────────────────────────────────────────────────┐  │
-││┌ ConversionWindow：Qt 工作区 ──────────────────────────────────────────────────────────────┐  │  │
-│││顶部 FunctionBar：[ 文件 ] [ 滚动设置 ]                                                    │  │  │
-│││─────────────────────────────────────────────────────────────────────────────────────────  │  │  │
-│││┌ 左侧 SourceDocumentView ───────────────┐  │  ┌ 右侧 MarkdownResultView ───────────────┐  │  │  │
-││││┌ PdfPreviewWidget ──────────────────┐  │  │  │┌ MarkdownPreviewWidget ─────────────┐  │  │  │  │
-│││││缓存 / 分页 / 滚动控制              │  │  │  ││提供位置 / 尺寸 / 控制              │  │  │  │  │
-│││││┌ Qt 窗口容器 ───────────────────┐ ▐│  │  │  ││┌ CEF 原生子窗口 ────────────┐      │  │  │  │  │
-││││││┌ PdfRenderWindow ───────────┐  │ ▐│  │  │  │││独立 Surface                │      │  │  │  │  │
-│││││││独立 QBackingStore          │  │ ▐│  │  │  │││                            │      │  │  │  │  │
-│││││││                            │  │ ▐│  │  │  │││MD 正文                     │      │  │  │  │  │
-│││││││PDF 正文                    │  │ ▐│ ┌──────┐│└────────────────────────────┘      │  │  │  │  │
-││││││└────────────────────────────┘  │ ▐│ │ 转化 ││                                    │  │  │  │  │
-│││││└────────────────────────────────┘ ▐│ └──────┘│                                    │  │  │  │  │
-││││└────────────────────────────────────┘  │  │  │└────────────────────────────────────┘  │  │  │  │
-│││└────────────────────────────────────────┘  │  └────────────────────────────────────────┘  │  │  │
-│││─────────────────────────────────────────────────────────────────────────────────────────  │  │  │
-│││状态提示区域                                                                               │  │  │
-││└───────────────────────────────────────────────────────────────────────────────────────────┘  │  │
-│└───────────────────────────────────────────────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ 鸿蒙系统窗口：QtWorkspaceAbility / WindowStage ────────────────────────────────────────────────────────────────┐
+│ ┌─ Index.ets：XComponent NODE / QPA ──────────────────────────────────────────────────────────────────────────┐ │
+│ │ ┌─ ConversionWindow : QWidget ────────────────────────────────────────────────────────────────────────────┐ │ │
+│ │ │ FunctionBar：[ 文件 ] [ 滚动设置 ]                                                                      │ │ │
+│ │ │ ┌─ WorkspaceSplitter ─────────────────────────────────────────────────────────────────────────────────┐ │ │ │
+│ │ │ │ ┌─ DocumentView A : QStackedWidget ────────────┐ ║ ┌─ DocumentView B : QStackedWidget ────────────┐ │ │ │ │
+│ │ │ │ │ 当前页：PDF 预览                             │ ║ │ 当前页：MD 预览                              │ │ │ │ │
+│ │ │ │ │ ┌─ PdfPreviewWidget ───────────────────────┐ │ ║ │ ┌─ MarkdownPreviewWidget ──────────────────┐ │ │ │ │ │
+│ │ │ │ │ │ 继承 RasterDocumentViewport（同一控件）  │ │ ║ │ │ 位置、尺寸及生命周期控制                 │ │ │ │ │ │
+│ │ │ │ │ │ ┌─ viewport : QWidget ───────────────┐ ▐ │ │ ║ │ │ ┌─ CEF 原生 Surface* ────────────────┐   │ │ │ │ │ │
+│ │ │ │ │ │ │ ┌─ createWindowContainer ────────┐ │ ▐ │ │ ║ │ │ │ MD 正文                            │   │ │ │ │ │ │
+│ │ │ │ │ │ │ │ ┌─ RasterRenderWindow ───────┐ │ │ ▐ │ │ ║ │ │ │ 浏览器绘制、滚动及惯性             │   │ │ │ │ │ │
+│ │ │ │ │ │ │ │ │ PDF 正文                   │ │ │ ▐ │ │ ║ │ │ │                                    │   │ │ │ │ │ │
+│ │ │ │ │ │ │ │ │ 独立 QBackingStore         │ │ │ ▐ │ │ ║ │ │ │                                    │   │ │ │ │ │ │
+│ │ │ │ │ │ │ │ └────────────────────────────┘ │ │ ▐ │ │ ║ │ │ │                                    │   │ │ │ │ │ │
+│ │ │ │ │ │ │ └────────────────────────────────┘ │ ▐ │ │ ║ │ │ │                                    │   │ │ │ │ │ │
+│ │ │ │ │ │ └────────────────────────────────────┘ ▐ │ │ ║ │ │ └────────────────────────────────────┘   │ │ │ │ │ │
+│ │ │ │ │ └──────────────────────────────────────────┘ │ ║ │ └──────────────────────────────────────────┘ │ │ │ │ │
+│ │ │ │ └──────────────────────────────────────────────┘ ║ └──────────────────────────────────────────────┘ │ │ │ │
+│ │ │ │                                              [ 转化 ] ← 悬浮于分隔条下部                            │ │ │ │
+│ │ │ └─────────────────────────────────────────────────────────────────────────────────────────────────────┘ │ │ │
+│ │ │ 状态提示 QLabel                                                                                         │ │ │
+│ │ └─────────────────────────────────────────────────────────────────────────────────────────────────────────┘ │ │
+│ └─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **外层**：`QtWorkspaceAbility` 持有鸿蒙 `WindowStage`；`Index.ets` 的 `XComponent NODE` 通过 QPA 承载 Qt。ArkTS 首页是另一个 Ability，不作为 Qt 页面的背景层。
-- **Qt 工作区**：`ConversionWindow` 组装功能条、分栏、状态提示及悬浮按钮；中间竖线由 `WorkspaceSplitter` 控制，转化按钮不占用单独一行布局。
-- **左侧**：`SourceDocumentView → PdfPreviewWidget → viewport → createWindowContainer → PdfRenderWindow`。`PdfPreviewWidget` 管理 PDFium、缓存及滚动，`PdfRenderWindow` 用独立 `QBackingStore` 绘制。图中 `▐` 是位于正文绘图窗口外的 Qt 滚动条。
-- **右侧**：`MarkdownResultView → MarkdownPreviewWidget` 管理展示状态；图中的 CEF 框表示视觉位置，CEF 的实际原生父节点是 Qt 顶层窗口，由 `MarkdownPreviewWidget` 按右侧占位区域定位，并使用自己的 Surface。
-- **画面隔离**：左右正文不共享分隔条所在的 Qt 顶层绘图缓冲。2026-10-30 用户真机反馈：独立 PDF 容器已消除拖动残影；不据此推断其他平台或模拟器的 GPU 崩溃已解决。
-- **通信**：QPA 负责窗口、绘制和输入适配；NAPI／`QtBridge` 负责文件选择、任务恢复、返回首页等业务消息。
+- **平台承载**：`QtWorkspaceAbility` 管理鸿蒙系统窗口；`Index.ets` 的 `XComponent NODE` 通过 QPA 承载 Qt。ArkTS 首页属于另一个 Ability，不是工作区下面的一层背景。
+- **工作区**：`ConversionWindow` 组装 `FunctionBar`、`WorkspaceSplitter` 和状态提示。`ConvertButton` 是主窗口的直接子控件，图中只标出悬浮位置；它不占分栏布局空间，按需显示并位于正文和分隔条之上。
+- **共用区域**：两侧都是 `DocumentView : QStackedWidget`，本身就是页面切换容器，不再额外包一层业务 QWidget。工作区分别注入 PDF 和 Markdown 渲染器，并接收文件卡片、打开完成与滚动信号；两侧不互相调用。
+- **PDF 预览**：`PdfPreviewWidget` 继承 `RasterDocumentViewport`，两者是同一个控件，不是父子包裹的两层。其 `viewport` 内的 `createWindowContainer()` 嵌入 `RasterRenderWindow`，后者使用独立 `QBackingStore` 绘制。图中 `▐` 是位于正文视口外侧的 `DocumentScrollBar`。
+- **Markdown 预览**：`MarkdownPreviewWidget` 是 Qt 中的占位及控制控件。CEF 的实际原生父窗口是 `ConversionWindow` 对应的 Qt 顶层窗口，按占位区域映射位置与尺寸，并使用自己的 Surface；它不是普通 QWidget 子画布。
+- **非可视能力**：`DocumentRenderer` 是 C++ 渲染接口；`DocumentScrollController` 是 Qt 滚动能力对象；`QBackingStore` 和页面缓存是内部数据／绘图对象。这些都不构成额外可视壳层。
+- **能力配置**：`DocumentView::setViewOptions()` 接收 `DocumentViewOptions`，默认启用 `inertiaEnabled` 和 `scrollBarVisible`。前者只控制 Qt 侧追加的惯性；CEF 保留引擎自身的手势处理，只映射滚动条显隐。`scrollOwner()` 区分 View 管理滚动与 Backend 管理滚动，不在 CEF 外再加 Qt 滚动区域。
+- **复用边界**：卡片与预览切换不依赖输入／输出角色。后续 Word 渲染器可实现同一契约后注入；Word 引擎尚未接入，卡片的 `kind` 参数只选择图标，不会自动创建对应格式的渲染器。
+- **画面隔离与通信**：PDF 和 MD 正文分别使用独立画面缓冲。此前独立 PDF 缓冲方案获得用户真机无拖动残影的反馈，本次重构仍需重新验收；这也不代表模拟器 CEF GPU 崩溃已解决。QPA 负责窗口、绘制和输入适配，NAPI／`QtBridge` 负责文件选择、任务恢复与返回首页等业务消息。
+
+切到占位图模式或尚无文件时，`DocumentView` 显示另一页；两页互斥显示，卡片的滚动区域不会包在 PDF 或 CEF 正文外侧：
+
+```text
+┌─ DocumentView：卡片页（两侧共用） ─────────────────────────────────────┐
+│ QScrollArea → viewport → 内容 QWidget → FileCard                       │
+│ 显示图标、文件名或选择提示；正文预览页隐藏                             │
+└────────────────────────────────────────────────────────────────────────┘
+```
 
 ## Qt 文件菜单
 
@@ -217,7 +245,7 @@ QPA 在进程内只启动一次 Qt 主循环，CEF 引擎也保留到应用退�
 ```
 
 - 查看模式同时控制左右区域，进入工作区和恢复任务时默认选中预览；未选择 PDF 时仍显示选择入口，未生成 MD 时右侧继续显示等待提示。选择新文件和开始转换保留当前查看方式，转换成功自动切回预览，并同步菜单蓝点；“切换模式”中的业务模式始终为转化。
-- 仅当前“转化模式”拥有更换入口；取消保留原任务、结果、查看方式和按钮状态，选取成功创建新任务、清空旧结果并恢复转化按钮。按钮显隐直接读取 `MarkdownResultView::hasResultFile()`，不依赖 CEF 加载完成，不重复维护完成状态。选择或转换期间禁用查看方式切换与更换文件，避免任务串线。其他业务模式和编辑视图只保留 TODO，没有接入业务切换。
+- 仅当前“转化模式”拥有更换入口；取消保留原任务、结果、查看方式和按钮状态，选取成功创建新任务、清空旧结果并恢复转化按钮。按钮显隐直接读取 `DocumentView::hasDocument()`（结果区域实例），不依赖 CEF 加载完成，不重复维护完成状态。选择或转换期间禁用查看方式切换与更换文件，避免任务串线。其他业务模式和编辑视图只保留 TODO，没有接入业务切换。
 - 输入、输出目录均定位当前任务下的目录，未选择 PDF 时禁用；系统文件管理器是否准确定位仍需真机确认。原 MD 文件卡片的目录跳转继续使用非空文件校验。
 - “滚动设置”的菜单选中项直接控制联动，不再保留隐藏复选框作为第二份状态。默认“同步滚动”：左右预览均就绪时，任意一侧滚动带动另一侧，优先按 PDF 页码对齐，无页码时按总进度同步；切回同步时按当前 PDF 位置对齐一次。“单向滚动”：只滚动当前操作区域，不向另一侧转发位置。更换文件、恢复任务和切换查看方式沿用当前滚动设置。本次接线仅做格式检查，切换效果仍需设备验收。
 
@@ -225,18 +253,18 @@ QPA 在进程内只启动一次 Qt 主循环，CEF 引擎也保留到应用退�
 
 - `WorkspaceSplitter` 独立封装分隔区，沿用 Qt 原生拖动。普通分隔线为 1px；按住拖动时主线为 5px，颜色 `#546987`，鼠标 Y 坐标处显示宽 10px、长 180px、圆角半径 5px 的同色指示条，中心随鼠标上下移动，松开后恢复普通状态。命中区为 11px，容纳加宽的指示条；按下或松开时不因线条变粗改变布局。
 - 鸿蒙分隔条使用独立原生子节点；分隔条显示、开始拖动和 PDF／MD 就绪时显式提升到 CEF 之上，移动时沿用该层级，避免每个鼠标事件都等待一次 ArkUI 置顶调用。覆盖范围仅限自身 11px 区域；悬浮转化按钮仍可覆盖分隔条。其他平台沿用 Qt 兄弟控件层级。
-- `DocumentScrollBar` 只维护文档竖向滚动条外观：宽 24px、滑块最小高度 30px、常态 `#c6c6c6`、无圆角、透明轨道且无上下箭头。PDF 预览安装组件后再绑定动画及滚动信号，惯性、位移与同步仍由预览管理；MD 继续使用 CEF 滚动条。样式由组件集中维护。
+- `DocumentScrollBar` 只维护文档竖向滚动条外观：宽 24px、滑块最小高度 30px、常态 `#c6c6c6`、无圆角、透明轨道且无上下箭头。公共 `RasterDocumentViewport` 安装滚动条后，再由 `DocumentScrollController` 绑定动画；PDF 后端处理页码定位，两侧同步由工作区协调。MD 继续使用 CEF 滚动条。
 
-PDF 查看器继续使用 PDFium 与 Qt Widgets，滚动和缓存由 `PdfPreviewWidget` 管理：
+PDF 查看器继续使用 PDFium 与 Qt Widgets；`PdfPreviewWidget` 负责页面、缓存和同步定位，公共栅格视口负责绘图承载，`DocumentScrollController` 负责 Qt 输入与惯性：
 
 - 有像素位移时即时跟手；鸿蒙触控板的物理像素按窗口像素比换算为逻辑像素，并修正方向，避免高分屏放大滑动速度；鼠标不取反，Windows/macOS 沿用 Qt 像素方向。换算后的不足一像素位移累计到下次，不因取整丢失慢速输入。只有角度位移的滚轮沿用 100ms 短动画。
 - 触控板记录近期位移与时间，松手后按末速度匀减速续滑，最长 600ms；慢速、停顿或到达边界时不续滑。零位移的 `ScrollEnd` 也会处理，并等待 32ms 接收系统惯性；收到 `ScrollMomentum` 时取消自有惯性，避免叠加。再次触碰、反向滑动、操作滚动条、对侧同步定位、换文件、调整尺寸或隐藏预览会中止旧运动。
-- `PdfPreviewWidget.cpp` 中的 `touchpadSpeed`（默认 1.0）和 `touchpadDeceleration`（默认 0.005 逻辑像素/ms²）集中控制速度与减速。当前已统一位移单位；与右侧 CEF/MD 的实际续滑距离、时长及速度仍需真机对比校准，不能将默认参数视为与浏览器手感完全一致。
-- PDF 正文通过 `PdfRenderWindow` 的独立 `QWindow + QBackingStore` 绘制，再由 `createWindowContainer()` 嵌入左侧视口；不再从工作区共享画布截取 PDF 图像。`PdfPreviewWidget` 继续负责 PDFium、页面缓存、滚动条、惯性及双向同步，原生窗口将滚轮、触控板阶段和键盘事件转交原有控制器。正文滚动改为复用独立缓冲中的像素，仅补画新露出的条带；后台页面图片完成后仍只刷新对应区域。关闭时先解除绘制和输入回调，再等待后台任务完成。
-- PDF 原生容器只创建自身节点，避免连带把整个分栏提升为不透明原生窗口；PDF 或 MD 原生预览显示后，工作区统一恢复分隔条和悬浮转化按钮的层级。鸿蒙日志 `HUIWEN_PDF_SURFACE backend=independent-raster created` 直接写入 HiLog，用于确认新容器已构造。2026-10-30 用户反馈真机拖动已无残影；本轮代码清理仅做格式检查，未新增编译、打包或设备验收。
+- `components/scrolling/DocumentScrollController.cpp` 中的 `touchpadSpeed`（默认 1.0）和 `touchpadDeceleration`（默认 0.005 逻辑像素/ms²）集中控制速度与减速。当前已统一位移单位；与右侧 CEF/MD 的实际续滑距离、时长及速度仍需真机对比校准，不能将默认参数视为与浏览器手感完全一致。
+- PDF 正文通过通用 `RasterRenderWindow` 的独立 `QWindow + QBackingStore` 绘制，由 `RasterDocumentViewport` 使用 `createWindowContainer()` 嵌入视口。原生窗口将滚轮、触控板阶段和键盘事件转交公共视口；Qt 滚动能力由 `DocumentScrollController` 提供，PDFium、页面缓存与页码定位留在 PDF 后端。滚动复用独立缓冲中的像素，仅补画新露出的条带；后台页面图片完成后仍只刷新对应区域。关闭时先解除绘制和输入回调，再等待后台任务完成。
+- PDF 原生容器只创建自身节点，避免连带把整个分栏提升为不透明原生窗口；PDF 或 MD 原生预览显示后，工作区统一恢复分隔条和悬浮转化按钮的层级。鸿蒙日志 `HUIWEN_RASTER_SURFACE backend=independent-raster created` 直接写入 HiLog，用于确认新容器已构造。2026-10-30 用户反馈此前独立缓冲方案真机拖动已无残影；本次通用化重构仅做格式检查，未新增编译、打包或设备验收。
 - 拖动分隔条或调整窗口时，PDF 每约 16ms 合并一次最新布局与滚动同步请求，实时绘制缓存位图并临时关闭平滑缩放；尺寸停止变化 150ms 后恢复平滑绘制并请求高清页面。换文件或隐藏预览时取消待处理的布局与缩放任务。MD 保持原有实时更新，未增加人为延迟。调整尺寸期间不重新解析 PDF。
 - CEF 原生窗口的几何更新只保留一个待处理任务，尚未执行的请求合并为最新位置和尺寸；实际应用时跳过重复状态与空尺寸，关闭后的任务不再操作原生节点。仅变化的属性交给 ArkUI/XComponent 更新，不再调用离屏渲染专用的 `WasResized()`、`WasHidden()` 或限 Windows/Linux 的 `NotifyMoveOrResizeStarted()`。此调整用于收敛窗口更新；模拟器之后仍出现同地址的 CEF GPU 崩溃，不能将其视为崩溃已修复。
-- 保留必要错误日志：`HUIWEN_CEF stage=geometry_failed` 表示 CEF 原生节点更新失败，`HuiwenCEF` 记录引擎及页面生命周期；PDF 容器构造时输出一次 `HUIWEN_PDF_SURFACE`。临时逐次拖动和绘制采样日志已移除。
+- 保留必要错误日志：`HUIWEN_CEF stage=geometry_failed` 表示 CEF 原生节点更新失败，`HuiwenCEF` 记录引擎及页面生命周期；公共栅格绘图窗口构造时输出一次 `HUIWEN_RASTER_SURFACE`。临时逐次拖动和绘制采样日志已移除。
 - 优先后台串行渲染当前可见页，再在 64 MiB 缓存预算允许时预取下一页、上一页；没有余量时跳过预取。每页采样预算按布局中可能同时可见的最多页数确定，不随滚动位置变化，避免跨页导致缓存尺寸反复失效。超长页仍降采样，不做整份文档预加载或分块渲染。
 - 触控板、鼠标滚轮、跨页及同步／单向滚动需按设备逐项验收；真机残影通过的反馈不等于 Windows/macOS 或模拟器验收通过。
 

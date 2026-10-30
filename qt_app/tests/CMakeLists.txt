@@ -9,9 +9,11 @@ if(NOT EXISTS "${PDFIUM_LIBRARY}")
     message(FATAL_ERROR "请指定匹配本机架构的 PDFIUM_LIBRARY")
 endif()
 add_executable(pdf_preview_check pdf_preview_check.cpp
-    ../src/sourceView/PdfPreviewWidget.cpp ../src/sourceView/PdfPreviewWidget.h
-    ../src/sourceView/PdfRenderWindow.cpp
-    ../src/sourceView/SourceDocumentView.cpp ../src/sourceView/SourceDocumentView.h
+    ../src/documentView/renderers/pdf/PdfPreviewWidget.cpp
+    ../src/components/rendering/RasterRenderWindow.cpp
+    ../src/components/rendering/RasterDocumentViewport.cpp
+    ../src/components/scrolling/DocumentScrollController.cpp
+    ../src/documentView/DocumentView.cpp
     ../src/components/scrollBar/DocumentScrollBar.cpp
     ../src/components/FileCard.cpp ../resources/file-icons.qrc)
 target_include_directories(pdf_preview_check PRIVATE ../src ../../third_party/pdfium/public)

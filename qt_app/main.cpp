@@ -6,7 +6,7 @@
 #include <QWindow>
 #ifdef Q_OS_OPENHARMONY
 #include "platform/harmony/qt_bridge.h"
-#include "resultView/MarkdownPreviewWidget.h"
+#include "documentView/renderers/markdown/MarkdownPreviewWidget.h"
 #include <QPointer>
 #include <memory>
 #endif
@@ -50,8 +50,9 @@ int main(int argc, char *argv[])
     QObject::connect(&readyTimer, &QTimer::timeout, &app,
                      [&]
                      {
-                         if (window && workspaceId == QtBridge::workspaceId() && window->windowHandle() &&
-                             window->windowHandle()->isExposed() && bridge.request("ready"))
+                         if (window && workspaceId == QtBridge::workspaceId() &&
+                             window->windowHandle() && window->windowHandle()->isExposed() &&
+                             bridge.request("ready"))
                              readyTimer.stop();
                      });
     QObject::connect(&bridge, &QtBridge::closeRequested, &app,

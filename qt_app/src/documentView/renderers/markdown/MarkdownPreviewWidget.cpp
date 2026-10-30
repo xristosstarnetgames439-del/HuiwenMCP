@@ -96,7 +96,8 @@ class CefRuntime
     void closed(CefRefPtr<CefBrowser> browser)
     {
         browsers.erase(std::remove_if(browsers.begin(), browsers.end(),
-                                      [browser](const auto &item) { return item->IsSame(browser); }),
+                                      [browser](const auto &item)
+                                      { return item->IsSame(browser); }),
                        browsers.end());
         finishClose();
     }
@@ -111,11 +112,8 @@ class CefRuntime
             auto completed = std::move(closeCompleted);
             closeCompleted = {};
             // OnBeforeClose 返回后再通知 Qt，宿主窗口此时才允许销毁。
-            postCef(
-                [completed]
-                {
-                    QMetaObject::invokeMethod(qApp, completed, Qt::QueuedConnection);
-                });
+            postCef([completed]
+                    { QMetaObject::invokeMethod(qApp, completed, Qt::QueuedConnection); });
         }
     }
     ~CefRuntime() { stop(); }
@@ -189,16 +187,18 @@ class PreviewClient final : public CefClient,
   public:
     using Notice = std::function<void(bool, const QString &)>;
     using ScrollNotice = std::function<void(int, double, double)>;
-    PreviewClient(QString url, QString text, Notice notice, ScrollNotice scrollNotice)
+    PreviewClient(QString url, QString text, bool scrollBarVisible, Notice notice,
+                  ScrollNotice scrollNotice)
         : url_(std::move(url)), text_(std::move(text)), notice_(std::move(notice)),
-          scrollNotice_(std::move(scrollNotice))
+          scrollNotice_(std::move(scrollNotice)), scrollBarVisible_(scrollBarVisible)
     {
     }
     CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
     CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
     CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
     CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override { return this; }
-    void OnBeforeContextMenu(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefContextMenuParams>,
+    void OnBeforeContextMenu(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>,
+                             CefRefPtr<CefContextMenuParams>,
                              CefRefPtr<CefMenuModel> model) override
     {
         model->Clear();
@@ -212,7 +212,8 @@ class PreviewClient final : public CefClient,
         CefBrowserSettings settings;
         settings.background_color = CefColorSetARGB(255, 245, 247, 251);
         ++CefRuntime::instance().creating;
-        if (!CefBrowserHost::CreateBrowser(info, this, url_.toStdString(), settings, nullptr, nullptr))
+        if (!CefBrowserHost::CreateBrowser(info, this, url_.toStdString(), settings, nullptr,
+                                           nullptr))
         {
             --CefRuntime::instance().creating;
             notice_(false, QStringLiteral("无法创建 Markdown 预览窗口，请返回文件后重试"));
@@ -265,8 +266,34 @@ class PreviewClient final : public CefClient,
                                 .arg(QString::fromUtf8(arguments));
         browser_->GetMainFrame()->ExecuteJavaScript(script.toStdString(), url_.toStdString(), 0);
     }
+    void publishScrollPosition()
+    {
+        if (!browser_ || !loaded_ || closing_)
+            return;
+        browser_->GetMainFrame()->ExecuteJavaScript(
+            "(() => { const position = window.HuiwenMarkdown.scrollPosition();"
+            "window.huiwenReportScroll(position.page, position.fraction, position.progress); })();",
+            url_.toStdString(), 0);
+    }
+    void setScrollBarVisible(bool visible)
+    {
+        scrollBarVisible_ = visible;
+        if (!browser_ || !loaded_ || closing_)
+            return;
+        // 隐藏浏览器滚动条，但仍由 CEF 处理滚动，不能在外面再叠一层 Qt 滚动区域。
+        const auto script =
+            QStringLiteral(
+                "(() => { let style = document.getElementById('huiwen-scrollbar');"
+                "if (!style) { style = document.createElement('style');"
+                "style.id = 'huiwen-scrollbar'; document.head.appendChild(style); }"
+                "style.textContent = %1 ? '' : "
+                "'::-webkit-scrollbar { width: 0 !important; height: 0 !important; }'; })();")
+                .arg(visible ? QStringLiteral("true") : QStringLiteral("false"));
+        browser_->GetMainFrame()->ExecuteJavaScript(script.toStdString(), url_.toStdString(), 0);
+    }
     bool OnProcessMessageReceived(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
-                                  CefProcessId source, CefRefPtr<CefProcessMessage> message) override
+                                  CefProcessId source,
+                                  CefRefPtr<CefProcessMessage> message) override
     {
         if (message->GetName() != "Huiwen.PreviewScroll")
             return false;
@@ -280,15 +307,15 @@ class PreviewClient final : public CefClient,
         const int page = values->GetInt(0);
         const double fraction = values->GetDouble(1);
         const double progress = values->GetDouble(2);
-        if (page >= 0 && page <= 100000 && std::isfinite(fraction) && fraction >= 0 && fraction <= 1 &&
-            std::isfinite(progress) && progress >= 0 && progress <= 1)
+        if (page >= 0 && page <= 100000 && std::isfinite(fraction) && fraction >= 0 &&
+            fraction <= 1 && std::isfinite(progress) && progress >= 0 && progress <= 1)
             scrollNotice_(page, fraction, progress);
         return true;
     }
     void OnAfterCreated(CefRefPtr<CefBrowser> browser) override
     {
-        OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "HuiwenCEF", "PREVIEW browser created id=%{public}d",
-                     browser->GetIdentifier());
+        OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "HuiwenCEF",
+                     "PREVIEW browser created id=%{public}d", browser->GetIdentifier());
         browser_ = browser;
         --CefRuntime::instance().creating;
         CefRuntime::instance().browsers.push_back(browser);
@@ -319,6 +346,7 @@ class PreviewClient final : public CefClient,
                 .arg(QString::fromUtf8(argument));
         frame->ExecuteJavaScript(script.toStdString(), url_.toStdString(), 0);
         loaded_ = true;
+        setScrollBarVisible(scrollBarVisible_);
         notice_(true, {});
     }
     void OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, ErrorCode code,
@@ -326,10 +354,10 @@ class PreviewClient final : public CefClient,
     {
         if (frame->IsMain() && code != ERR_ABORTED && !closing_)
         {
-            OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "HuiwenCEF", "PREVIEW load failed code=%{public}d",
-                         static_cast<int>(code));
-            notice_(false,
-                    QStringLiteral("Markdown 预览加载失败：") + QString::fromStdString(message.ToString()));
+            OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "HuiwenCEF",
+                         "PREVIEW load failed code=%{public}d", static_cast<int>(code));
+            notice_(false, QStringLiteral("Markdown 预览加载失败：") +
+                               QString::fromStdString(message.ToString()));
         }
     }
     void OnRenderProcessTerminated(CefRefPtr<CefBrowser>, TerminationStatus status) override
@@ -337,21 +365,21 @@ class PreviewClient final : public CefClient,
         if (closing_)
             return;
         loaded_ = false;
-        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "HuiwenCEF", "PREVIEW renderer terminated status=%{public}d",
-                     static_cast<int>(status));
+        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "HuiwenCEF",
+                     "PREVIEW renderer terminated status=%{public}d", static_cast<int>(status));
         notice_(false, QStringLiteral("Markdown 渲染进程已退出（状态 %1），请返回文件后重试")
                            .arg(static_cast<int>(status)));
     }
-    bool OnBeforeBrowse(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest> request, bool,
-                        bool) override
+    bool OnBeforeBrowse(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest> request,
+                        bool, bool) override
     {
         // 文档中的链接不能导航到外部页面或任意本地文件。
         return request->GetURL().ToString() != url_.toStdString();
     }
-    bool OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, const CefString &, const CefString &,
-                       WindowOpenDisposition, bool, const CefPopupFeatures &, CefWindowInfo &,
-                       CefRefPtr<CefClient> &, CefBrowserSettings &, CefRefPtr<CefDictionaryValue> &,
-                       bool *) override
+    bool OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, const CefString &,
+                       const CefString &, WindowOpenDisposition, bool, const CefPopupFeatures &,
+                       CefWindowInfo &, CefRefPtr<CefClient> &, CefBrowserSettings &,
+                       CefRefPtr<CefDictionaryValue> &, bool *) override
     {
         return true;
     }
@@ -397,6 +425,7 @@ class PreviewClient final : public CefClient,
     CefRefPtr<CefBrowser> browser_;
     bool closing_ = false;
     bool loaded_ = false;
+    bool scrollBarVisible_;
     IMPLEMENT_REFCOUNTING(PreviewClient);
 };
 } // namespace
@@ -410,9 +439,11 @@ class MarkdownPreviewWidget::Private
     QElapsedTimer waiting;
     QString text;
     QString url;
+    QString path;
     bool valid = false;
     bool ready = false;
     int generation = 0;
+    bool scrollBarVisible = true;
 #ifdef Q_OS_OPENHARMONY
     CefRefPtr<PreviewClient> client;
 #endif
@@ -441,6 +472,7 @@ MarkdownPreviewWidget::~MarkdownPreviewWidget()
 void MarkdownPreviewWidget::setDocument(const QString &path)
 {
     closeBrowser();
+    d_->path = path;
     d_->valid = false;
     d_->text.clear();
     d_->url.clear();
@@ -456,7 +488,8 @@ void MarkdownPreviewWidget::setDocument(const QString &path)
     }
     QTextCodec::ConverterState state;
     const QByteArray bytes = file.readAll();
-    d_->text = QTextCodec::codecForName("UTF-8")->toUnicode(bytes.constData(), bytes.size(), &state);
+    d_->text =
+        QTextCodec::codecForName("UTF-8")->toUnicode(bytes.constData(), bytes.size(), &state);
     if (state.invalidChars)
     {
         d_->status->setText(QStringLiteral("无法预览：Markdown 文件不是有效的 UTF-8 文本"));
@@ -468,7 +501,8 @@ void MarkdownPreviewWidget::setDocument(const QString &path)
         d_->status->setText(QStringLiteral("缺少预览资源，请重新执行 Run 构建"));
         return;
     }
-    d_->url = QStringLiteral("data:text/html;base64,") + QString::fromLatin1(page.readAll().toBase64());
+    d_->url =
+        QStringLiteral("data:text/html;base64,") + QString::fromLatin1(page.readAll().toBase64());
     d_->valid = true;
     d_->status->setText(QStringLiteral("正在加载 Markdown 预览…"));
     if (isVisible())
@@ -513,46 +547,47 @@ void MarkdownPreviewWidget::openBrowser()
         return;
     const int generation = d_->generation;
     QPointer<MarkdownPreviewWidget> self(this);
-    d_->client = new PreviewClient(d_->url, d_->text,
-                                   [self, generation](bool ready, const QString &error)
-                                   {
-                                       QMetaObject::invokeMethod(
-                                           qApp,
-                                           [self, generation, ready, error]
-                                           {
-                                               if (!self || self->d_->generation != generation)
-                                                   return;
-                                               self->d_->timer->stop();
-                                               self->d_->status->setVisible(!ready);
-                                               if (!ready)
-                                               {
-                                                   self->d_->ready = false;
-                                                   emit self->previewReadyChanged(false);
-                                                   self->d_->status->setText(error);
-                                               }
-                                               self->syncGeometry();
-                                           },
-                                           Qt::QueuedConnection);
-                                   },
-                                   [self, generation](int page, double fraction, double progress)
-                                   {
-                                       QMetaObject::invokeMethod(
-                                           qApp,
-                                           [self, generation, page, fraction, progress]
-                                           {
-                                               if (!self || self->d_->generation != generation ||
-                                                   !self->isVisible())
-                                                   return;
-                                               if (!self->d_->ready)
-                                               {
-                                                   self->d_->ready = true;
-                                                   emit self->previewReadyChanged(true);
-                                                   return;
-                                               }
-                                               emit self->scrollPositionChanged(page, fraction, progress);
-                                           },
-                                           Qt::QueuedConnection);
-                                   });
+    d_->client = new PreviewClient(
+        d_->url, d_->text, d_->scrollBarVisible,
+        [self, generation](bool ready, const QString &error)
+        {
+            QMetaObject::invokeMethod(
+                qApp,
+                [self, generation, ready, error]
+                {
+                    if (!self || self->d_->generation != generation)
+                        return;
+                    self->d_->timer->stop();
+                    self->d_->status->setVisible(!ready);
+                    if (!ready)
+                    {
+                        self->d_->ready = false;
+                        emit self->previewReadyChanged(false);
+                        self->d_->status->setText(error);
+                    }
+                    self->syncGeometry();
+                },
+                Qt::QueuedConnection);
+        },
+        [self, generation](int page, double fraction, double progress)
+        {
+            QMetaObject::invokeMethod(
+                qApp,
+                [self, generation, page, fraction, progress]
+                {
+                    if (!self || self->d_->generation != generation || !self->isVisible())
+                        return;
+                    if (!self->d_->ready)
+                    {
+                        self->d_->ready = true;
+                        emit self->documentOpened(self->d_->path);
+                        emit self->previewReadyChanged(true);
+                        return;
+                    }
+                    emit self->scrollPositionChanged(page, fraction, progress);
+                },
+                Qt::QueuedConnection);
+        });
     const auto client = d_->client;
     const auto parent = static_cast<CefWindowHandle>(window()->winId());
     const QRect bounds = browserRect();
@@ -614,6 +649,27 @@ void MarkdownPreviewWidget::setScrollPosition(int page, double fraction, double 
     const auto client = d_->client;
     if (client && CefRuntime::instance().state == CefRuntime::Ready)
         postCef([client, page, fraction, progress] { client->scrollTo(page, fraction, progress); });
+#endif
+}
+
+void MarkdownPreviewWidget::publishScrollPosition()
+{
+#ifdef Q_OS_OPENHARMONY
+    const auto client = d_->client;
+    if (isPreviewReady() && client && CefRuntime::instance().state == CefRuntime::Ready)
+        postCef([client] { client->publishScrollPosition(); });
+#endif
+}
+
+void MarkdownPreviewWidget::setViewOptions(const DocumentViewOptions &options)
+{
+    // CEF 保留自身惯性；此处只映射通用滚动条选项，不接入 Qt 的惯性控制器。
+    d_->scrollBarVisible = options.scrollBarVisible;
+#ifdef Q_OS_OPENHARMONY
+    const auto client = d_->client;
+    if (client && CefRuntime::instance().state == CefRuntime::Ready)
+        postCef([client, visible = options.scrollBarVisible]
+                { client->setScrollBarVisible(visible); });
 #endif
 }
 

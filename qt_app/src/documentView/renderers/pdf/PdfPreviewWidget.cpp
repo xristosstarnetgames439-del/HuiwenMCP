@@ -1,9 +1,7 @@
 /* PDFium 仅在后台任务中调用；窗口线程只排版和绘制 QImage。 */
 #include "PdfPreviewWidget.h"
-#include "PdfRenderWindow.h"
-#include "components/scrollBar/DocumentScrollBar.h"
+#include "components/rendering/RasterRenderWindow.h"
 #include <fpdfview.h>
-#include <QApplication>
 #include <QFile>
 #include <QHideEvent>
 #include <QMutex>
@@ -13,8 +11,6 @@
 #include <QScrollBar>
 #include <QScopedValueRollback>
 #include <QShowEvent>
-#include <QWheelEvent>
-#include <QVBoxLayout>
 #include <QtConcurrent>
 #include <algorithm>
 #include <cmath>
@@ -28,9 +24,6 @@ int pdfiumUsers = 0;
 constexpr int pageMargin = 24;
 constexpr int pageGap = 16;
 constexpr int maxRenderPixels = 16 * 1024 * 1024;
-// 速度系数和减速度（逻辑像素/ms²）集中在此，便于按真机 MD 手感校准。
-constexpr qreal touchpadSpeed = 1.0;
-constexpr qreal touchpadDeceleration = 0.005;
 } // namespace
 
 struct PdfPreviewDocument
@@ -134,44 +127,8 @@ PdfPreviewResult renderPage(const std::shared_ptr<PdfPreviewDocument> &document,
 }
 } // namespace
 
-PdfPreviewWidget::PdfPreviewWidget(QWidget *parent)
-    : QAbstractScrollArea(parent), scrollAnimation_(this)
+PdfPreviewWidget::PdfPreviewWidget(QWidget *parent) : RasterDocumentViewport(parent)
 {
-    setFrameShape(QFrame::NoFrame);
-    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    setVerticalScrollBar(new DocumentScrollBar(this));
-    // 替换滚动条后再绑定动画，避免保留已被 Qt 释放的旧滚动条。
-    scrollAnimation_.setTargetObject(verticalScrollBar());
-    scrollAnimation_.setPropertyName("value");
-    // 滚动值按逻辑像素计量，Qt 默认的单步 1 不适合文档阅读。
-    verticalScrollBar()->setSingleStep(40);
-    viewport()->setBackgroundRole(QPalette::Window);
-    viewport()->setAutoFillBackground(true);
-    renderWindow_ = new PdfRenderWindow(this, [this](QPainter &painter, const QRegion &region)
-                                        { paintDocument(painter, region); });
-    auto *container = QWidget::createWindowContainer(renderWindow_, viewport());
-    // 只创建视口容器的原生节点，避免把整个分栏和工作区提升为不透明原生窗口。
-    container->setAttribute(Qt::WA_DontCreateNativeAncestors);
-    container->setFocusPolicy(Qt::StrongFocus);
-    auto *viewportLayout = new QVBoxLayout(viewport());
-    viewportLayout->setContentsMargins(0, 0, 0, 0);
-    viewportLayout->setSpacing(0);
-    viewportLayout->addWidget(container);
-    connect(renderWindow_, &QWindow::visibleChanged, this,
-            [this](bool visible)
-            {
-                if (visible)
-                    emit previewReadyChanged(isPreviewReady());
-            });
-    scrollAnimation_.setDuration(100);
-    scrollAnimation_.setEasingCurve(QEasingCurve::OutCubic);
-    inertiaTimer_.setSingleShot(true);
-    connect(&inertiaTimer_, &QTimer::timeout, this, &PdfPreviewWidget::startInertia);
-    connect(verticalScrollBar(), &QScrollBar::sliderPressed, this,
-            &PdfPreviewWidget::stopScrolling);
-    connect(verticalScrollBar(), &QScrollBar::actionTriggered, this,
-            &PdfPreviewWidget::stopScrolling);
     setAccessibleName(QStringLiteral("PDF 正文预览"));
     // 尺寸持续变化时只按约一帧处理一次最新布局，避免每个鼠标事件都遍历所有页。
     layoutTimer_.setSingleShot(true);
@@ -305,7 +262,8 @@ void PdfPreviewWidget::setScrollPosition(int page, double fraction, double progr
     const int maximum = verticalScrollBar()->maximum();
     double target = qBound(0.0, progress, 1.0) * maximum;
     if (page > 0 && page <= pageRects_.size() && progress > 0 && progress < 1)
-        target = pageRects_[page - 1].top() + qBound(0.0, fraction, 1.0) * pageRects_[page - 1].height();
+        target =
+            pageRects_[page - 1].top() + qBound(0.0, fraction, 1.0) * pageRects_[page - 1].height();
     verticalScrollBar()->setValue(qRound(qBound(0.0, target, double(maximum))));
 }
 
@@ -468,8 +426,7 @@ void PdfPreviewWidget::paintDocument(QPainter &painter, const QRegion &region)
 
 void PdfPreviewWidget::resizeEvent(QResizeEvent *event)
 {
-    QAbstractScrollArea::resizeEvent(event);
-    stopScrolling();
+    RasterDocumentViewport::resizeEvent(event);
     resizeTimer_.start();
     if (!layoutTimer_.isActive())
         layoutTimer_.start();
@@ -477,7 +434,7 @@ void PdfPreviewWidget::resizeEvent(QResizeEvent *event)
 
 void PdfPreviewWidget::showEvent(QShowEvent *event)
 {
-    QAbstractScrollArea::showEvent(event);
+    RasterDocumentViewport::showEvent(event);
     layoutPages();
     requestRender();
     emit previewReadyChanged(isPreviewReady());
@@ -485,145 +442,11 @@ void PdfPreviewWidget::showEvent(QShowEvent *event)
 
 void PdfPreviewWidget::hideEvent(QHideEvent *event)
 {
-    stopScrolling();
     layoutTimer_.stop();
     resizeTimer_.stop();
     scrollReportTimer_.stop();
     emit previewReadyChanged(false);
-    QAbstractScrollArea::hideEvent(event);
-}
-
-void PdfPreviewWidget::stopScrolling()
-{
-    scrollAnimation_.stop();
-    inertiaTimer_.stop();
-    velocityClock_.invalidate();
-    touchpadVelocity_ = 0;
-    velocityDistance_ = 0;
-    scrollRemainder_ = 0;
-    systemMomentum_ = false;
-}
-
-void PdfPreviewWidget::startInertia()
-{
-    const qreal velocity = touchpadVelocity_;
-    stopScrolling();
-    if (!isPreviewReady() || std::abs(velocity) < 0.05)
-        return;
-    auto *bar = verticalScrollBar();
-    const qreal duration = std::min(600.0, std::abs(velocity) / touchpadDeceleration);
-    const int start = bar->value();
-    const int target = qRound(
-        qBound(qreal(bar->minimum()), start + velocity * duration / 2, qreal(bar->maximum())));
-    if (start == target)
-        return;
-    // OutQuad 对应匀减速；接近边界时缩短时长，保持起始速度并在边界停止。
-    scrollAnimation_.setDuration(
-        std::max(1, qRound(2.0 * std::abs(target - start) / std::abs(velocity))));
-    scrollAnimation_.setEasingCurve(QEasingCurve::OutQuad);
-    scrollAnimation_.setStartValue(start);
-    scrollAnimation_.setEndValue(target);
-    scrollAnimation_.start();
-}
-
-void PdfPreviewWidget::wheelEvent(QWheelEvent *event)
-{
-    if (!isPreviewReady() || event->modifiers() != Qt::NoModifier)
-    {
-        stopScrolling();
-        QAbstractScrollArea::wheelEvent(event);
-        return;
-    }
-    const Qt::ScrollPhase phase = event->phase();
-    if (phase == Qt::ScrollBegin)
-    {
-        stopScrolling();
-        velocityClock_.start();
-    }
-    if (phase == Qt::ScrollMomentum)
-    {
-        // 系统已经提供续滑，取消待启动或正在执行的自有惯性。
-        stopScrolling();
-        systemMomentum_ = true;
-    }
-    auto *bar = verticalScrollBar();
-    if (!event->pixelDelta().isNull())
-    {
-        if (phase == Qt::NoScrollPhase)
-            stopScrolling();
-        qreal delta = event->pixelDelta().y();
-#ifdef Q_OS_OPENHARMONY
-        // 鸿蒙触控板上报物理像素且方向相反，换算成 Qt 逻辑像素；鼠标不取反。
-        if (phase != Qt::NoScrollPhase)
-            delta = -delta / viewport()->devicePixelRatioF();
-#endif
-        scrollAnimation_.stop();
-        inertiaTimer_.stop();
-        const qreal distance = -delta * (phase == Qt::NoScrollPhase ? 1.0 : touchpadSpeed);
-        if ((phase == Qt::ScrollBegin || phase == Qt::ScrollUpdate) && !systemMomentum_ && distance)
-        {
-            if (!velocityClock_.isValid())
-                velocityClock_.start();
-            if (distance * touchpadVelocity_ < 0)
-            {
-                touchpadVelocity_ = 0;
-                velocityDistance_ = 0;
-                velocityClock_.restart();
-            }
-            velocityDistance_ += distance;
-            const qint64 elapsed = velocityClock_.elapsed();
-            if (elapsed >= 8)
-            {
-                const qreal sample = elapsed < 100 ? velocityDistance_ / elapsed : 0;
-                const qreal weight = std::min(1.0, elapsed / 40.0);
-                touchpadVelocity_ = sample * touchpadVelocity_ > 0
-                                        ? sample * weight + touchpadVelocity_ * (1 - weight)
-                                        : sample;
-                touchpadVelocity_ = qBound(-4.0, touchpadVelocity_, 4.0);
-                velocityDistance_ = 0;
-                velocityClock_.restart();
-            }
-        }
-        // 保留缩放后的不足一像素位移，慢速滑动也不会逐次丢失精度。
-        scrollRemainder_ += distance;
-        const int pixels = qRound(scrollRemainder_);
-        scrollRemainder_ -= pixels;
-        bar->setValue(bar->value() + pixels);
-        if ((distance < 0 && bar->value() == bar->minimum()) ||
-            (distance > 0 && bar->value() == bar->maximum()))
-            stopScrolling();
-    }
-    else if (event->angleDelta().y())
-    {
-        const int delta = qRound(event->angleDelta().y() / 120.0 *
-                                 QApplication::wheelScrollLines() * bar->singleStep());
-        const int pending = scrollAnimation_.state() == QAbstractAnimation::Running &&
-                                    scrollAnimation_.easingCurve().type() == QEasingCurve::OutCubic
-                                ? scrollAnimation_.endValue().toInt() - bar->value()
-                                : 0;
-        const int start = bar->value();
-        // 同方向继续累积目标；反向时从当前位置立即转向。
-        const int target =
-            qBound(bar->minimum(), start + (pending * double(delta) < 0 ? pending : 0) - delta,
-                   bar->maximum());
-        stopScrolling();
-        scrollAnimation_.setDuration(100);
-        scrollAnimation_.setEasingCurve(QEasingCurve::OutCubic);
-        scrollAnimation_.setStartValue(start);
-        scrollAnimation_.setEndValue(target);
-        scrollAnimation_.start();
-    }
-    else if (phase == Qt::NoScrollPhase)
-    {
-        stopScrolling();
-        event->ignore();
-        return;
-    }
-    // ScrollEnd 通常没有位移；短暂等待系统惯性事件，避免重复续滑。
-    if (phase == Qt::ScrollEnd && !systemMomentum_ && velocityClock_.isValid() &&
-        velocityClock_.elapsed() < 80 && std::abs(touchpadVelocity_) >= 0.05)
-        inertiaTimer_.start(32);
-    event->accept();
+    RasterDocumentViewport::hideEvent(event);
 }
 
 void PdfPreviewWidget::scrollContentsBy(int dx, int dy)

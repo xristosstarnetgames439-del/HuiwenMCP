@@ -1,6 +1,6 @@
-/* 无 QtTest 依赖的桌面回归检查：真实渲染、滚动、缩放、切换与忙碌状态。 */
-#include "sourceView/PdfPreviewWidget.h"
-#include "sourceView/SourceDocumentView.h"
+/* 无 QtTest 依赖的桌面检查：真实 PDF 加载、定位、通用区域切换与按需启用能力。 */
+#include "documentView/DocumentView.h"
+#include "documentView/renderers/pdf/PdfPreviewWidget.h"
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QFile>
@@ -66,14 +66,6 @@ void writePdf(const QString &path, const QByteArray &firstColor)
     require(file.write(pdf) == pdf.size(), "PDF 样本写入失败");
 }
 
-bool hasColor(PdfPreviewWidget *view, QColor color)
-{
-    const QImage image = view->viewport()->grab().toImage();
-    const qreal ratio = image.devicePixelRatio();
-    const QPoint point(static_cast<int>(view->viewport()->width() / 2 * ratio),
-                       static_cast<int>(60 * ratio));
-    return image.rect().contains(point) && image.pixelColor(point) == color;
-}
 } // namespace
 
 int main(int argc, char **argv)
@@ -85,54 +77,68 @@ int main(int argc, char **argv)
     const QString second = directory.filePath(QStringLiteral("绿色.pdf"));
     writePdf(first, "1 0 0");
     writePdf(second, "0 1 0");
-    SourceDocumentView source;
+    auto *view = new PdfPreviewWidget;
+    DocumentView source(view, QStringLiteral("请选择 PDF"), true);
     source.resize(480, 320);
     source.show();
-    auto *view = source.findChild<PdfPreviewWidget *>();
-    QPushButton *button = nullptr;
-    for (auto *candidate : source.findChildren<QPushButton *>())
-        if (candidate->text() == QStringLiteral("预览"))
-            button = candidate;
-    require(view && button && !button->isVisible(), "未导入时预览入口不应显示");
-    source.setDocuments({{"pdf", "中文红色.pdf", first, {}}});
-    require(button->isVisible() && !view->isVisible(), "导入后应保留卡片并显示预览按钮");
+    auto *card = source.findChild<QPushButton *>();
+    require(card && card->isEnabled() && !source.hasDocument(), "空输入区域应可选择文件");
+    int selections = 0;
+    QObject::connect(&source, &DocumentView::cardActivated, [&] { ++selections; });
+    source.setDocument(first, QStringLiteral("pdf"));
+    require(card->isVisible() && !view->isVisible(), "占位图模式应显示文件卡片");
     source.setBusy(true);
-    require(!button->isEnabled(), "忙碌时预览入口应禁用");
+    card->click();
+    require(!card->isEnabled() && selections == 0, "忙碌时不能触发文件选择");
     source.setBusy(false);
-    button->click();
-    waitFor([&] { return hasColor(view, Qt::red); });
+    card->click();
+    require(selections == 1, "卡片点击应交给调用方处理");
+    source.setPreviewMode(true);
+    waitFor([&] { return source.isPreviewReady(); });
     const int oldRange = view->verticalScrollBar()->maximum();
     require(oldRange > 0, "多页 PDF 应可滚动");
     source.resize(720, 320);
     waitFor([&]
-            { return view->verticalScrollBar()->maximum() > oldRange && hasColor(view, Qt::red); });
+            { return view->verticalScrollBar()->maximum() > oldRange && source.isPreviewReady(); });
     require(view->verticalScrollBar()->singleStep() == 40, "PDF 滚轮步长应使用文档阅读尺度");
     int reports = 0;
     int page = 0;
     double fraction = 0;
-    QObject::connect(view, &PdfPreviewWidget::scrollPositionChanged,
+    QObject::connect(&source, &DocumentView::scrollPositionChanged,
                      [&](int current, double part, double)
                      {
                          ++reports;
                          page = current;
                          fraction = part;
                      });
-    view->setScrollPosition(2, 0.25, 0.5);
+    source.setScrollPosition(2, 0.25, 0.5);
     require(reports == 0, "同步带动的 PDF 滚动不能立即反向回传");
-    view->publishScrollPosition();
+    source.publishScrollPosition();
     require(page == 2 && qAbs(fraction - 0.25) < 0.01, "PDF 应按页码和页内比例定位");
-    view->setScrollPosition(0, 0, 0.5);
-    require(qAbs(view->verticalScrollBar()->value() - view->verticalScrollBar()->maximum() * 0.5) <= 1,
+    source.setScrollPosition(0, 0, 0.5);
+    require(qAbs(view->verticalScrollBar()->value() - view->verticalScrollBar()->maximum() * 0.5) <=
+                1,
             "无页码时应按总进度定位 PDF");
-    view->verticalScrollBar()->setValue(view->verticalScrollBar()->maximum());
-    waitFor([&] { return hasColor(view, Qt::blue); });
-    button->click();
-    require(!view->isVisible(), "返回文件后应显示卡片");
-    button->click();
-    source.setDocuments({{"pdf", "绿色.pdf", second, {}}});
-    require(!view->isVisible(), "更换文件应回到卡片");
-    button->click();
-    waitFor([&] { return hasColor(view, Qt::green); });
+    source.setViewOptions({false, false});
+    require(source.scrollOwner() == DocumentScrollOwner::View &&
+                view->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOff,
+            "Qt 渲染器应支持按需关闭自有惯性和滚动条");
+    source.setViewOptions({true, true});
+    require(view->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded, "滚动条应能恢复显示");
+    source.setPreviewMode(false);
+    require(card->isVisible() && !source.isPreviewReady(), "占位图模式不能转发预览滚动");
+    source.setPreviewMode(true);
+    source.setDocument(second, QStringLiteral("pdf"));
+    waitFor([&] { return source.isPreviewReady(); });
     require(view->verticalScrollBar()->value() == 0, "更换文件后应从第一页开始");
+    source.setDocument({}, QStringLiteral("pdf"));
+    require(!source.hasDocument() && card->isVisible() && !source.isPreviewReady(),
+            "清空文档应恢复空状态");
+    DocumentView result(new PdfPreviewWidget, QStringLiteral("待生成文件"), false);
+    require(!result.findChild<QPushButton *>()->isEnabled(),
+            "同一个 View 应支持不可点击的空结果状态");
+    result.setDocument(first, QStringLiteral("pdf"));
+    require(result.hasDocument() && result.findChild<QPushButton *>()->isEnabled(),
+            "同一个 View 应能承载不同角色和文档渲染器");
     std::cout << "PDF_PREVIEW_CHECK_OK" << std::endl;
 }

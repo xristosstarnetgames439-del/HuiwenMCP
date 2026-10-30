@@ -12,11 +12,12 @@ set(workspace_sources
     resources/file-icons.qrc
     resources/markdown.qrc
     src/workspace/ConversionWindow.cpp
-    src/sourceView/SourceDocumentView.cpp
-    src/sourceView/PdfPreviewWidget.cpp
-    src/sourceView/PdfRenderWindow.cpp
-    src/resultView/MarkdownResultView.cpp
-    src/resultView/MarkdownPreviewWidget.cpp
+    src/documentView/DocumentView.cpp
+    src/documentView/renderers/pdf/PdfPreviewWidget.cpp
+    src/documentView/renderers/markdown/MarkdownPreviewWidget.cpp
+    src/components/rendering/RasterRenderWindow.cpp
+    src/components/rendering/RasterDocumentViewport.cpp
+    src/components/scrolling/DocumentScrollController.cpp
     src/components/FileCard.cpp
     src/components/ConvertButton.cpp
     src/components/splitter/WorkspaceSplitter.cpp

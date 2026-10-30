@@ -4,10 +4,11 @@
 #include "components/functionBar/FileMenu.h"
 #include "components/functionBar/FunctionBar.h"
 #include "components/splitter/WorkspaceSplitter.h"
-#include "resultView/MarkdownResultView.h"
+#include "documentView/DocumentView.h"
+#include "documentView/renderers/markdown/MarkdownPreviewWidget.h"
+#include "documentView/renderers/pdf/PdfPreviewWidget.h"
 #include "sandbox/SandboxService.h"
 #include "services/ConversionService.h"
-#include "sourceView/SourceDocumentView.h"
 #include <QCloseEvent>
 #ifdef Q_OS_OPENHARMONY
 #include "platform/harmony/qt_bridge.h"
@@ -22,10 +23,12 @@
 #include <QVBoxLayout>
 
 ConversionWindow::ConversionWindow(QWidget *parent)
-    : QWidget(parent), splitter_(new WorkspaceSplitter(this)), source_(new SourceDocumentView),
-      result_(new MarkdownResultView), button_(new ConvertButton(this)),
-      functionBar_(new FunctionBar(this)), conversion_(new ConversionService(this)),
-      sandbox_(new SandboxService(this)), status_(new QLabel(this))
+    : QWidget(parent), splitter_(new WorkspaceSplitter(this)),
+      source_(new DocumentView(new PdfPreviewWidget, QStringLiteral("请选择 PDF"), true)),
+      result_(new DocumentView(new MarkdownPreviewWidget, QStringLiteral("待转化 PDF"), false)),
+      button_(new ConvertButton(this)), functionBar_(new FunctionBar(this)),
+      conversion_(new ConversionService(this)), sandbox_(new SandboxService(this)),
+      status_(new QLabel(this))
 {
     setWindowTitle(QStringLiteral("汇文MCP · 转换工作区"));
     setMinimumSize(640, 480);
@@ -39,8 +42,7 @@ ConversionWindow::ConversionWindow(QWidget *parent)
     setAttribute(Qt::WA_StyledBackground);
     // 显式指定所有可见背景，避免平台样式为滚动内容另行填充默认颜色。
     setStyleSheet(QStringLiteral("QWidget#conversionWindow, "
-                                 "QWidget#sourceDocumentBackground, QWidget#resultDocumentBackground, "
-                                 "QWidget#sourceDocumentViewport, QWidget#resultDocumentViewport "
+                                 "QWidget#documentCardBackground, QWidget#documentCardViewport "
                                  "{ background-color: %1; }")
                       .arg(colors.color(QPalette::Window).name()));
     auto *layout = new QVBoxLayout(this);
@@ -66,22 +68,23 @@ ConversionWindow::ConversionWindow(QWidget *parent)
         refreshScrollSync();
         placeConvertButton();
     };
-    connect(source_, &SourceDocumentView::previewReadyChanged, this, refreshPreview);
-    connect(result_, &MarkdownResultView::previewReadyChanged, this, refreshPreview);
-    connect(functionBar_, &FunctionBar::scrollSyncChanged, this, &ConversionWindow::refreshScrollSync);
-    connect(source_, &SourceDocumentView::scrollPositionChanged, this,
+    connect(source_, &DocumentView::previewReadyChanged, this, refreshPreview);
+    connect(result_, &DocumentView::previewReadyChanged, this, refreshPreview);
+    connect(functionBar_, &FunctionBar::scrollSyncChanged, this,
+            &ConversionWindow::refreshScrollSync);
+    connect(source_, &DocumentView::scrollPositionChanged, this,
             [this](int page, double fraction, double progress)
             {
                 if (scrollSyncEnabled())
                     result_->setScrollPosition(page, fraction, progress);
             });
-    connect(result_, &MarkdownResultView::scrollPositionChanged, this,
+    connect(result_, &DocumentView::scrollPositionChanged, this,
             [this](int page, double fraction, double progress)
             {
                 if (scrollSyncEnabled())
                     source_->setScrollPosition(page, fraction, progress);
             });
-    connect(source_, &SourceDocumentView::selectionRequested, this, &ConversionWindow::selectDocument);
+    connect(source_, &DocumentView::cardActivated, this, &ConversionWindow::selectDocument);
     connect(functionBar_->fileMenu(), &FileMenu::replacementRequested, this,
             &ConversionWindow::selectDocument);
     connect(functionBar_->fileMenu(), &FileMenu::previewModeRequested, this,
@@ -93,20 +96,18 @@ ConversionWindow::ConversionWindow(QWidget *parent)
                 placeConvertButton();
             });
     connect(functionBar_->fileMenu(), &FileMenu::directoryRequested, this,
-            [this](bool output)
-            {
-                sandbox_->openTaskDirectory(document_, output);
-            });
+            [this](bool output) { sandbox_->openTaskDirectory(document_, output); });
     connect(sandbox_, &SandboxService::documentSelected, this,
             [this](const DocumentItem &document)
             {
                 document_ = document;
                 retry_ = false;
                 status_->clear();
-                source_->setDocuments({document});
-                result_->setResultFile({});
+                source_->setDocument(document.inputPath, document.kind, document.name);
+                result_->setDocument({}, QStringLiteral("md"));
             });
-    connect(sandbox_, &SandboxService::restorationRequested, this, &ConversionWindow::restoreDocument);
+    connect(sandbox_, &SandboxService::restorationRequested, this,
+            &ConversionWindow::restoreDocument);
     connect(sandbox_, &SandboxService::selectionFinished, this,
             [this]
             {
@@ -114,19 +115,16 @@ ConversionWindow::ConversionWindow(QWidget *parent)
                 refreshBusyState();
             });
     connect(sandbox_, &SandboxService::failed, status_, &QLabel::setText);
-    connect(source_, &SourceDocumentView::documentOpened, this,
-            [this]
-            {
-                sandbox_->markUsed(document_);
-            });
-    connect(result_, &MarkdownResultView::locationRequested, sandbox_, &SandboxService::openResultLocation);
+    connect(source_, &DocumentView::documentOpened, this,
+            [this] { sandbox_->markUsed(document_); });
+    connect(result_, &DocumentView::cardActivated, sandbox_, &SandboxService::openResultLocation);
     // 按钮独立接入转换服务，区域之间不互相调用。
     connect(button_, &QPushButton::clicked, this,
             [this]
             {
                 converting_ = true;
                 refreshBusyState();
-                result_->setResultFile({});
+                result_->setDocument({}, QStringLiteral("md"));
                 status_->setText(QStringLiteral("正在转化 PDF…"));
                 sandbox_->markUsed(document_);
                 conversion_->convertPdfToMd(document_.inputPath, document_.outputPath);
@@ -137,7 +135,7 @@ ConversionWindow::ConversionWindow(QWidget *parent)
                 converting_ = false;
                 retry_ = false;
                 sandbox_->markUsed(document_);
-                result_->setResultFile(path);
+                result_->setDocument(path, QStringLiteral("md"));
                 functionBar_->fileMenu()->setPreviewMode(true);
                 status_->setText(QStringLiteral("[code=0] %1 路径：%2").arg(message, path));
                 refreshBusyState();
@@ -184,17 +182,19 @@ void ConversionWindow::placeConvertButton()
         return;
     const QPoint center = splitter_->handle(1)->mapTo(this, splitter_->handle(1)->rect().center());
     button_->move(center.x() - button_->width() / 2,
-                  splitter_->mapTo(this, QPoint(0, splitter_->height())).y() - button_->height() - 72);
+                  splitter_->mapTo(this, QPoint(0, splitter_->height())).y() - button_->height() -
+                      72);
     button_->raiseAbovePreview();
 }
 
 void ConversionWindow::refreshBusyState()
 {
     source_->setBusy(picking_ || converting_);
-    functionBar_->fileMenu()->setDocumentState(!document_.inputPath.isEmpty(), picking_ || converting_);
+    functionBar_->fileMenu()->setDocumentState(!document_.inputPath.isEmpty(),
+                                               picking_ || converting_);
     button_->setState(!document_.inputPath.isEmpty(), picking_ || converting_, retry_);
     // 仅用当前结果控制显隐：选取成功会清空结果，取消选取不会改变结果。
-    button_->setVisible(!result_->hasResultFile());
+    button_->setVisible(!result_->hasDocument());
     placeConvertButton();
 }
 
@@ -211,7 +211,8 @@ void ConversionWindow::restoreDocument(const DocumentItem &document)
 {
     if (picking_ || converting_)
     {
-        sandbox_->finishRestoration(document, QStringLiteral("工作区正在选择或转换文件，请稍后重试"));
+        sandbox_->finishRestoration(document,
+                                    QStringLiteral("工作区正在选择或转换文件，请稍后重试"));
         return;
     }
     // 在替换当前工作区前再次确认输入可读，避免列表展示后文件被删除。
@@ -224,9 +225,10 @@ void ConversionWindow::restoreDocument(const DocumentItem &document)
     document_ = document;
     retry_ = false;
     status_->clear();
-    source_->setDocuments({document});
+    source_->setDocument(document.inputPath, document.kind, document.name);
     const QFileInfo output(document.outputPath);
-    result_->setResultFile(output.isFile() && output.size() > 0 ? document.outputPath : QString());
+    result_->setDocument(output.isFile() && output.size() > 0 ? document.outputPath : QString(),
+                         QStringLiteral("md"));
     functionBar_->fileMenu()->setPreviewMode(true);
     refreshBusyState();
     sandbox_->finishRestoration(document);
@@ -241,5 +243,6 @@ void ConversionWindow::refreshScrollSync()
 bool ConversionWindow::scrollSyncEnabled() const
 {
     // 单向滚动不向另一侧转发位置；同步滚动仍要求左右预览均已就绪。
-    return functionBar_->isScrollSynchronized() && source_->isPreviewReady() && result_->isPreviewReady();
+    return functionBar_->isScrollSynchronized() && source_->isPreviewReady() &&
+           result_->isPreviewReady();
 }

@@ -1,5 +1,5 @@
-/* PDF 通过自身 QBackingStore 提交画面，不从工作区共享画布截取原生子窗口图像。 */
-#include "PdfRenderWindow.h"
+/* 栅格后端共用的原生绘图承载；只提交自有缓冲，不依赖文档格式。 */
+#include "RasterRenderWindow.h"
 #include <QCoreApplication>
 #include <QEvent>
 #include <QExposeEvent>
@@ -12,14 +12,14 @@
 #include <hilog/log.h>
 #endif
 
-PdfRenderWindow::PdfRenderWindow(QWidget *inputTarget, Paint paint)
+RasterRenderWindow::RasterRenderWindow(QWidget *inputTarget, Paint paint)
     : backingStore_(this), inputTarget_(inputTarget), paint_(std::move(paint))
 {
     setSurfaceType(QSurface::RasterSurface);
-    setObjectName(QStringLiteral("pdfRenderWindow"));
+    setObjectName(QStringLiteral("documentRasterWindow"));
 #ifdef Q_OS_OPENHARMONY
-    OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "HuiwenPDF",
-                 "HUIWEN_PDF_SURFACE backend=independent-raster created");
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "HuiwenRender",
+                 "HUIWEN_RASTER_SURFACE backend=independent-raster created");
 #endif
     connect(this, &QWindow::screenChanged, this,
             [this]
@@ -31,16 +31,16 @@ PdfRenderWindow::PdfRenderWindow(QWidget *inputTarget, Paint paint)
             });
 }
 
-QRect PdfRenderWindow::bounds() const { return QRect(QPoint(), size()); }
+QRect RasterRenderWindow::bounds() const { return QRect(QPoint(), size()); }
 
-void PdfRenderWindow::invalidate(const QRegion &region)
+void RasterRenderWindow::invalidate(const QRegion &region)
 {
     dirty_ += (region.isEmpty() ? QRegion(bounds()) : region.intersected(bounds()));
     if (isExposed() && !dirty_.isEmpty())
         requestUpdate();
 }
 
-void PdfRenderWindow::scrollBy(int dx, int dy)
+void RasterRenderWindow::scrollBy(int dx, int dy)
 {
     if (!dx && !dy)
         return;
@@ -57,13 +57,13 @@ void PdfRenderWindow::scrollBy(int dx, int dy)
     requestUpdate();
 }
 
-void PdfRenderWindow::stopRendering()
+void RasterRenderWindow::stopRendering()
 {
     paint_ = {};
     inputTarget_.clear();
 }
 
-bool PdfRenderWindow::event(QEvent *event)
+bool RasterRenderWindow::event(QEvent *event)
 {
     if (event->type() == QEvent::UpdateRequest)
     {
@@ -79,7 +79,7 @@ bool PdfRenderWindow::event(QEvent *event)
     return QWindow::event(event);
 }
 
-void PdfRenderWindow::exposeEvent(QExposeEvent *event)
+void RasterRenderWindow::exposeEvent(QExposeEvent *event)
 {
     QWindow::exposeEvent(event);
     if (isExposed())
@@ -89,14 +89,14 @@ void PdfRenderWindow::exposeEvent(QExposeEvent *event)
     }
 }
 
-void PdfRenderWindow::resizeEvent(QResizeEvent *event)
+void RasterRenderWindow::resizeEvent(QResizeEvent *event)
 {
     QWindow::resizeEvent(event);
     frameValid_ = false;
     invalidate();
 }
 
-void PdfRenderWindow::renderNow()
+void RasterRenderWindow::renderNow()
 {
     if (!isExposed() || size().isEmpty() || !paint_)
         return;

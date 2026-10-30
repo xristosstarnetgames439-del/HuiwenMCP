@@ -2,8 +2,7 @@
 #pragma once
 #include "sandbox/DocumentItem.h"
 #include <QWidget>
-class SourceDocumentView;
-class MarkdownResultView;
+class DocumentView;
 class ConvertButton;
 class FunctionBar;
 class ConversionService;
@@ -29,8 +28,8 @@ class ConversionWindow : public QWidget
     void selectDocument();
     void restoreDocument(const DocumentItem &document);
     WorkspaceSplitter *splitter_;
-    SourceDocumentView *source_;
-    MarkdownResultView *result_;
+    DocumentView *source_;
+    DocumentView *result_;
     ConvertButton *button_;
     FunctionBar *functionBar_;
     ConversionService *conversion_;

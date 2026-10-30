@@ -1,18 +1,15 @@
 /* PDF 正文预览：按区域宽度排版，后台渲染可见页并预取相邻页。 */
 #pragma once
-#include <QAbstractScrollArea>
+#include "components/rendering/RasterDocumentViewport.h"
 #include <QCache>
-#include <QElapsedTimer>
 #include <QFutureWatcher>
 #include <QImage>
-#include <QPropertyAnimation>
 #include <QRectF>
 #include <QTimer>
 #include <QVector>
 #include <memory>
 
 struct PdfPreviewDocument;
-class PdfRenderWindow;
 class QPainter;
 struct PdfPreviewResult
 {
@@ -23,35 +20,27 @@ struct PdfPreviewResult
     QString error;
 };
 
-class PdfPreviewWidget : public QAbstractScrollArea
+class PdfPreviewWidget : public RasterDocumentViewport
 {
     Q_OBJECT
   public:
     explicit PdfPreviewWidget(QWidget *parent = nullptr);
     ~PdfPreviewWidget() override;
-    void setDocument(const QString &path);
-    bool isPreviewReady() const;
-    void setScrollPosition(int page, double fraction, double progress);
-    void publishScrollPosition();
-
-  signals:
-    void documentOpened(const QString &path);
-    void previewReadyChanged(bool ready);
-    void scrollPositionChanged(int page, double fraction, double progress);
+    void setDocument(const QString &path) override;
+    bool isPreviewReady() const override;
+    void setScrollPosition(int page, double fraction, double progress) override;
+    void publishScrollPosition() override;
 
   protected:
     void resizeEvent(QResizeEvent *event) override;
     void showEvent(QShowEvent *event) override;
     void hideEvent(QHideEvent *event) override;
-    void wheelEvent(QWheelEvent *event) override;
     void scrollContentsBy(int dx, int dy) override;
 
   private:
-    void paintDocument(QPainter &painter, const QRegion &region);
+    void paintDocument(QPainter &painter, const QRegion &region) override;
     void layoutPages();
     void requestRender();
-    void stopScrolling();
-    void startInertia();
     int firstVisiblePage() const;
     QSize renderSize(int page) const;
     QString path_;
@@ -67,14 +56,6 @@ class PdfPreviewWidget : public QAbstractScrollArea
     QVector<QRectF> pageRects_;
     QCache<int, QImage> images_{64 * 1024 * 1024};
     QFutureWatcher<PdfPreviewResult> watcher_;
-    PdfRenderWindow *renderWindow_;
-    QPropertyAnimation scrollAnimation_;
-    QTimer inertiaTimer_;
-    QElapsedTimer velocityClock_;
-    qreal touchpadVelocity_ = 0;
-    qreal velocityDistance_ = 0;
-    qreal scrollRemainder_ = 0;
-    bool systemMomentum_ = false;
     QTimer layoutTimer_;
     QTimer resizeTimer_;
     QTimer scrollReportTimer_;
