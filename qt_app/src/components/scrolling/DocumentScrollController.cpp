@@ -8,9 +8,12 @@
 
 namespace
 {
-// 与当前 Markdown 手感保持一致的速度和减速度（逻辑像素/ms²）。
-constexpr qreal touchpadSpeed = 1.0;
-constexpr qreal touchpadDeceleration = 0.005;
+// 跟手阶段沿用逻辑像素位移，不随文档总高度放大。
+constexpr qreal touchpadSpeed = 2.0;
+// 参考鸿蒙 Chromium v114.14.9 的 FlingSpringCurveOhos，惯性初速度乘以 2.25。
+// 其初始偏移为 -v0 / 5.04，临界阻尼公式可化简为 v(t) = v0 * exp(-5.04 * t)。
+constexpr qreal flingVelocityMultiplier = 1.5 * 1.5;
+constexpr qreal flingFriction = 4.2 * 1.2;
 } // namespace
 
 DocumentScrollController::DocumentScrollController(QScrollBar *bar, QObject *parent)
@@ -19,7 +22,10 @@ DocumentScrollController::DocumentScrollController(QScrollBar *bar, QObject *par
     scrollAnimation_.setTargetObject(bar_);
     scrollAnimation_.setPropertyName("value");
     inertiaTimer_.setSingleShot(true);
+    inertiaFrameTimer_.setInterval(16);
+    inertiaFrameTimer_.setTimerType(Qt::PreciseTimer);
     connect(&inertiaTimer_, &QTimer::timeout, this, &DocumentScrollController::startInertia);
+    connect(&inertiaFrameTimer_, &QTimer::timeout, this, &DocumentScrollController::advanceInertia);
     connect(bar_, &QScrollBar::sliderPressed, this, &DocumentScrollController::stopScrolling);
     connect(bar_, &QScrollBar::actionTriggered, this, &DocumentScrollController::stopScrolling);
 }
@@ -34,7 +40,10 @@ void DocumentScrollController::stopScrolling()
 {
     scrollAnimation_.stop();
     inertiaTimer_.stop();
+    inertiaFrameTimer_.stop();
+    inertiaClock_.invalidate();
     velocityClock_.invalidate();
+    velocityTimestamp_ = 0;
     touchpadVelocity_ = 0;
     velocityDistance_ = 0;
     scrollRemainder_ = 0;
@@ -47,20 +56,28 @@ void DocumentScrollController::startInertia()
     stopScrolling();
     if (!inertiaEnabled_ || std::abs(velocity) < 0.05)
         return;
-    auto *bar = bar_;
-    const qreal duration = std::min(600.0, std::abs(velocity) / touchpadDeceleration);
-    const int start = bar->value();
-    const int target = qRound(
-        qBound(qreal(bar->minimum()), start + velocity * duration / 2, qreal(bar->maximum())));
-    if (start == target)
-        return;
-    // OutQuad 对应匀减速；接近边界时缩短时长，保持起始速度并在边界停止。
-    scrollAnimation_.setDuration(
-        std::max(1, qRound(2.0 * std::abs(target - start) / std::abs(velocity))));
-    scrollAnimation_.setEasingCurve(QEasingCurve::OutQuad);
-    scrollAnimation_.setStartValue(start);
-    scrollAnimation_.setEndValue(target);
-    scrollAnimation_.start();
+    touchpadVelocity_ = velocity * flingVelocityMultiplier;
+    inertiaClock_.start();
+    inertiaFrameTimer_.start();
+}
+
+void DocumentScrollController::advanceInertia()
+{
+    // 按真实帧间隔积分；单位从逻辑像素/ms 换算为逻辑像素/s，不受文档长度影响。
+    const qreal elapsed = inertiaClock_.restart() / 1000.0;
+    const qreal decay = -std::expm1(-flingFriction * elapsed);
+    const qreal distance = touchpadVelocity_ * 1000 * decay / flingFriction;
+    const qreal direction = std::copysign(1.0, touchpadVelocity_);
+    touchpadVelocity_ *= 1 - decay;
+    scrollRemainder_ += distance;
+    const int pixels = qRound(scrollRemainder_);
+    scrollRemainder_ -= pixels;
+    bar_->setValue(bar_->value() + pixels);
+    // 不照搬原曲线在 1% 振幅处补齐终点的行为；余程不足半像素再停止，避免尾段跳动。
+    if (std::abs(touchpadVelocity_) * 1000 / flingFriction < 0.5 ||
+        (direction < 0 && bar_->value() == bar_->minimum()) ||
+        (direction > 0 && bar_->value() == bar_->maximum()))
+        stopScrolling();
 }
 
 bool DocumentScrollController::handleWheelEvent(QWheelEvent *event, qreal pixelRatio)
@@ -73,12 +90,22 @@ bool DocumentScrollController::handleWheelEvent(QWheelEvent *event, qreal pixelR
         stopScrolling();
         return false;
     }
+    if (inertiaFrameTimer_.isActive())
+        stopScrolling();
     const Qt::ScrollPhase phase = event->phase();
     if (phase == Qt::ScrollBegin)
     {
         stopScrolling();
         velocityClock_.start();
+        velocityTimestamp_ = event->timestamp();
     }
+    // 优先使用输入发生时间，避免把 PDF 绘制或事件排队耗时算成手指移动速度。
+    const auto sampleElapsed = [&]() -> qint64
+    {
+        if (event->timestamp() && velocityTimestamp_ && event->timestamp() >= velocityTimestamp_)
+            return event->timestamp() - velocityTimestamp_;
+        return velocityClock_.isValid() ? velocityClock_.elapsed() : 0;
+    };
     if (phase == Qt::ScrollMomentum)
     {
         // 系统已经提供续滑，取消待启动或正在执行的自有惯性。
@@ -102,15 +129,19 @@ bool DocumentScrollController::handleWheelEvent(QWheelEvent *event, qreal pixelR
         if ((phase == Qt::ScrollBegin || phase == Qt::ScrollUpdate) && !systemMomentum_ && distance)
         {
             if (!velocityClock_.isValid())
+            {
                 velocityClock_.start();
+                velocityTimestamp_ = event->timestamp();
+            }
             if (distance * touchpadVelocity_ < 0)
             {
                 touchpadVelocity_ = 0;
                 velocityDistance_ = 0;
                 velocityClock_.restart();
+                velocityTimestamp_ = event->timestamp();
             }
             velocityDistance_ += distance;
-            const qint64 elapsed = velocityClock_.elapsed();
+            const qint64 elapsed = sampleElapsed();
             if (elapsed >= 8)
             {
                 const qreal sample = elapsed < 100 ? velocityDistance_ / elapsed : 0;
@@ -118,9 +149,11 @@ bool DocumentScrollController::handleWheelEvent(QWheelEvent *event, qreal pixelR
                 touchpadVelocity_ = sample * touchpadVelocity_ > 0
                                         ? sample * weight + touchpadVelocity_ * (1 - weight)
                                         : sample;
-                touchpadVelocity_ = qBound(-4.0, touchpadVelocity_, 4.0);
+                touchpadVelocity_ =
+                    qBound(-4.0 * touchpadSpeed, touchpadVelocity_, 4.0 * touchpadSpeed);
                 velocityDistance_ = 0;
                 velocityClock_.restart();
+                velocityTimestamp_ = event->timestamp();
             }
         }
         // 保留缩放后的不足一像素位移，慢速滑动也不会逐次丢失精度。
@@ -160,7 +193,7 @@ bool DocumentScrollController::handleWheelEvent(QWheelEvent *event, qreal pixelR
     }
     // ScrollEnd 通常没有位移；短暂等待系统惯性事件，避免重复续滑。
     if (inertiaEnabled_ && phase == Qt::ScrollEnd && !systemMomentum_ && velocityClock_.isValid() &&
-        velocityClock_.elapsed() < 80 && std::abs(touchpadVelocity_) >= 0.05)
+        sampleElapsed() < 80 && std::abs(touchpadVelocity_) >= 0.05)
         inertiaTimer_.start(32);
     event->accept();
     return true;

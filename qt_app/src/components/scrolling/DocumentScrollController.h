@@ -18,10 +18,14 @@ class DocumentScrollController final : public QObject
 
   private:
     void startInertia();
+    void advanceInertia();
     QScrollBar *bar_;
     QPropertyAnimation scrollAnimation_;
     QTimer inertiaTimer_;
+    QTimer inertiaFrameTimer_;
+    QElapsedTimer inertiaClock_;
     QElapsedTimer velocityClock_;
+    quint64 velocityTimestamp_ = 0;
     qreal touchpadVelocity_ = 0;
     qreal velocityDistance_ = 0;
     qreal scrollRemainder_ = 0;

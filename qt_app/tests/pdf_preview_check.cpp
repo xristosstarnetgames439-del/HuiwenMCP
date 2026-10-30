@@ -1,19 +1,30 @@
 /* 无 QtTest 依赖的桌面检查：真实 PDF 加载、定位、通用区域切换与按需启用能力。 */
 #include "documentView/DocumentView.h"
 #include "documentView/renderers/pdf/PdfPreviewWidget.h"
+#include "components/rendering/RasterRenderWindow.h"
+#include "components/scrolling/DocumentScrollController.h"
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QKeyEvent>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QWheelEvent>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
 
 namespace
 {
+// 通过真实原生绘图窗口注入事件，检查转发链，而不是直接调用滚动控制器。
+class PdfPreviewProbe : public PdfPreviewWidget
+{
+  public:
+    RasterRenderWindow *renderSurface() const { return renderWindow_; }
+};
+
 void require(bool condition, const char *message)
 {
     if (!condition)
@@ -35,6 +46,39 @@ void waitFor(const std::function<bool()> &condition)
         QThread::msleep(10);
     } while (timer.elapsed() < 10000);
     require(false, "等待预览结果超时");
+}
+
+void checkTouchpadInertia()
+{
+    QScrollBar bar;
+    bar.setRange(0, 100000);
+    bar.setValue(50000);
+    DocumentScrollController controller(&bar);
+    const auto wheel = [&](Qt::ScrollPhase phase, int pixels, ulong timestamp)
+    {
+        QWheelEvent event(QPointF(12, 12), QPointF(12, 12), QPoint(0, pixels), {}, Qt::NoButton,
+                          Qt::NoModifier, phase, false);
+        event.setTimestamp(timestamp);
+        controller.handleWheelEvent(&event, 1.0);
+    };
+    // 无需真实等待输入采样间隔：速度必须由事件时间戳得出，而非测试执行速度。
+    wheel(Qt::ScrollBegin, 0, 1000);
+    wheel(Qt::ScrollUpdate, -64, 1016);
+    const int released = bar.value();
+    const int direction = released > 50000 ? 1 : -1;
+    wheel(Qt::ScrollEnd, 0, 1016);
+    QElapsedTimer clock;
+    clock.start();
+    waitFor([&] { return clock.elapsed() >= 650; });
+    const int duringTail = bar.value();
+    waitFor([&] { return clock.elapsed() >= 2000; });
+    require(direction * (duringTail - released) > 0, "松手后应沿原方向续滑");
+    require(direction * (bar.value() - duringTail) > 0, "快速滑动的尾段不能在 600ms 被截断");
+    require(qAbs(qAbs(bar.value() - released) - 3571) <= 2,
+            "速率乘 2 后经鸿蒙 2.25 倍惯性增益应续滑约 3571px，不随文档总高度放大");
+    const int stopped = bar.value();
+    waitFor([&] { return clock.elapsed() >= 2100; });
+    require(bar.value() == stopped, "尾段收敛后应停止续滑");
 }
 
 void writePdf(const QString &path, const QByteArray &firstColor)
@@ -71,13 +115,14 @@ void writePdf(const QString &path, const QByteArray &firstColor)
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    checkTouchpadInertia();
     QTemporaryDir directory;
     require(directory.isValid(), "临时目录创建失败");
     const QString first = directory.filePath(QStringLiteral("中文红色.pdf"));
     const QString second = directory.filePath(QStringLiteral("绿色.pdf"));
     writePdf(first, "1 0 0");
     writePdf(second, "0 1 0");
-    auto *view = new PdfPreviewWidget;
+    auto *view = new PdfPreviewProbe;
     DocumentView source(view, QStringLiteral("请选择 PDF"), true);
     source.resize(480, 320);
     source.show();
@@ -101,6 +146,25 @@ int main(int argc, char **argv)
     waitFor([&]
             { return view->verticalScrollBar()->maximum() > oldRange && source.isPreviewReady(); });
     require(view->verticalScrollBar()->singleStep() == 40, "PDF 滚轮步长应使用文档阅读尺度");
+    source.setScrollPosition(0, 0, 0.5);
+    const int beforeGesture = view->verticalScrollBar()->value();
+    QWheelEvent begin(QPointF(12, 12), QPointF(12, 12), {}, {}, Qt::NoButton, Qt::NoModifier,
+                      Qt::ScrollBegin, false);
+    QApplication::sendEvent(view->renderSurface(), &begin);
+    QWheelEvent update(QPointF(12, 12), QPointF(12, 12), QPoint(0, -40), {}, Qt::NoButton,
+                       Qt::NoModifier, Qt::ScrollUpdate, false);
+    QApplication::sendEvent(view->renderSurface(), &update);
+    require(view->verticalScrollBar()->value() != beforeGesture,
+            "原生绘图窗口收到的触控板事件必须驱动 PDF 滚动");
+    QWheelEvent end(QPointF(12, 12), QPointF(12, 12), {}, {}, Qt::NoButton, Qt::NoModifier,
+                    Qt::ScrollEnd, false);
+    QApplication::sendEvent(view->renderSurface(), &end);
+    source.setScrollPosition(0, 0, 0.25);
+    const int beforeKey = view->verticalScrollBar()->value();
+    QKeyEvent pageDown(QEvent::KeyPress, Qt::Key_PageDown, Qt::NoModifier);
+    QApplication::sendEvent(view->renderSurface(), &pageDown);
+    require(view->verticalScrollBar()->value() > beforeKey, "改用 viewport 转发后仍应支持键盘翻页");
+    source.setScrollPosition(0, 0, 0);
     int reports = 0;
     int page = 0;
     double fraction = 0;

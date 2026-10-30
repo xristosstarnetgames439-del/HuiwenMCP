@@ -18,8 +18,11 @@ RasterDocumentViewport::RasterDocumentViewport(QWidget *parent) : QAbstractScrol
     scrollController_ = new DocumentScrollController(verticalScrollBar(), this);
     viewport()->setBackgroundRole(QPalette::Window);
     viewport()->setAutoFillBackground(true);
-    renderWindow_ = new RasterRenderWindow(this, [this](QPainter &painter, const QRegion &region)
-                                           { paintDocument(painter, region); });
+    // QAbstractScrollArea 自身会忽略滚轮事件；经 viewport 的事件过滤器才能进入 wheelEvent。
+    // viewport 已由 Qt 设置焦点代理，键盘和鼠标聚焦仍交给当前滚动区域。
+    renderWindow_ =
+        new RasterRenderWindow(viewport(), [this](QPainter &painter, const QRegion &region)
+                               { paintDocument(painter, region); });
     auto *container = QWidget::createWindowContainer(renderWindow_, viewport());
     // 保留独立原生缓冲；只提升容器节点，不把整个分栏提升为不透明原生窗口。
     container->setAttribute(Qt::WA_DontCreateNativeAncestors);
