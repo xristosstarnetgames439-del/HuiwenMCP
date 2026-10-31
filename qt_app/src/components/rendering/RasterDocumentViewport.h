@@ -6,6 +6,7 @@
 class DocumentScrollController;
 class RasterRenderWindow;
 class QPainter;
+class QScroller;
 
 class RasterDocumentViewport : public QAbstractScrollArea, public DocumentRenderer
 {
@@ -22,6 +23,7 @@ class RasterDocumentViewport : public QAbstractScrollArea, public DocumentRender
     void scrollPositionChanged(int page, double fraction, double progress);
 
   protected:
+    bool viewportEvent(QEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void hideEvent(QHideEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
@@ -31,4 +33,6 @@ class RasterDocumentViewport : public QAbstractScrollArea, public DocumentRender
 
   private:
     DocumentScrollController *scrollController_;
+    QScroller *touchScroller_;
+    bool touchInertiaEnabled_ = true;
 };

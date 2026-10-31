@@ -6,6 +6,7 @@
 #include <QPainter>
 #include <QResizeEvent>
 #include <QScreen>
+#include <QTouchEvent>
 #include <QWidget>
 #include <utility>
 #ifdef Q_OS_OPENHARMONY
@@ -69,6 +70,16 @@ bool RasterRenderWindow::event(QEvent *event)
     {
         renderNow();
         return true;
+    }
+    if (inputTarget_ &&
+        (event->type() == QEvent::TouchBegin || event->type() == QEvent::TouchUpdate ||
+         event->type() == QEvent::TouchEnd || event->type() == QEvent::TouchCancel))
+    {
+        const auto *touch = static_cast<QTouchEvent *>(event);
+        // 仅转发触屏；触控板仍走 Wheel，避免同一次输入驱动两套滚动。
+        if (touch->device() ? touch->device()->type() == QTouchDevice::TouchScreen
+                            : event->type() == QEvent::TouchCancel)
+            return QCoreApplication::sendEvent(inputTarget_, event);
     }
     // 原生窗口收到的滚轮、触控板阶段和键盘事件仍交给原有滚动控制器。
     if (inputTarget_ && (event->type() == QEvent::Wheel || event->type() == QEvent::KeyPress ||

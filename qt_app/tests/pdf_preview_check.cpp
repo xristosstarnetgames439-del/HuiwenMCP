@@ -9,8 +9,10 @@
 #include <QKeyEvent>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QScroller>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QTouchEvent>
 #include <QWheelEvent>
 #include <cstdlib>
 #include <functional>
@@ -81,6 +83,48 @@ void checkTouchpadInertia()
     require(bar.value() == stopped, "尾段收敛后应停止续滑");
 }
 
+void checkTouchscreen(PdfPreviewProbe *view)
+{
+    QTouchDevice device;
+    device.setType(QTouchDevice::TouchScreen);
+    device.setCapabilities(QTouchDevice::Position);
+    const auto touch = [&](QEvent::Type type, qreal y, ulong timestamp)
+    {
+        const auto state = type == QEvent::TouchBegin ? Qt::TouchPointPressed
+                           : type == QEvent::TouchEnd ? Qt::TouchPointReleased
+                                                      : Qt::TouchPointMoved;
+        QTouchEvent::TouchPoint point(0);
+        point.setState(state);
+        point.setPos(QPointF(80, y));
+        point.setScreenPos(view->renderSurface()->mapToGlobal(point.pos().toPoint()));
+        QTouchEvent event(type, &device, Qt::NoModifier, state, {point});
+        event.setTimestamp(timestamp);
+        QApplication::sendEvent(view->renderSurface(), &event);
+        require(event.isAccepted(), "原生绘图窗口必须转发并接收触屏事件");
+    };
+    view->setScrollPosition(0, 0, 0.25);
+    const int before = view->verticalScrollBar()->value();
+    touch(QEvent::TouchBegin, 260, 1000);
+    touch(QEvent::TouchUpdate, 210, 1016);
+    touch(QEvent::TouchUpdate, 160, 1032);
+    waitFor([&] { return view->verticalScrollBar()->value() > before; });
+    touch(QEvent::TouchUpdate, 110, 1048);
+    touch(QEvent::TouchEnd, 60, 1064);
+    auto *scroller = QScroller::scroller(view->viewport());
+    require(scroller->state() == QScroller::Scrolling, "触屏松手后应进入惯性滚动");
+    const int released = view->verticalScrollBar()->value();
+    waitFor([&] { return view->verticalScrollBar()->value() > released; });
+    touch(QEvent::TouchCancel, 60, 1080);
+    require(scroller->state() == QScroller::Inactive, "取消触摸必须停止触屏惯性");
+    touch(QEvent::TouchBegin, 200, 1100);
+    touch(QEvent::TouchUpdate, 150, 1116);
+    QWheelEvent wheel(QPointF(12, 12), QPointF(12, 12), {}, {}, Qt::NoButton, Qt::NoModifier,
+                      Qt::ScrollBegin, false);
+    QApplication::sendEvent(view->renderSurface(), &wheel);
+    require(scroller->state() == QScroller::Inactive, "触控板输入必须结束旧触屏滚动");
+    view->setScrollPosition(0, 0, 0);
+}
+
 void writePdf(const QString &path, const QByteArray &firstColor)
 {
     const QByteArray first = firstColor + " rg 0 0 200 300 re f\n";
@@ -146,6 +190,7 @@ int main(int argc, char **argv)
     waitFor([&]
             { return view->verticalScrollBar()->maximum() > oldRange && source.isPreviewReady(); });
     require(view->verticalScrollBar()->singleStep() == 40, "PDF 滚轮步长应使用文档阅读尺度");
+    checkTouchscreen(view);
     source.setScrollPosition(0, 0, 0.5);
     const int beforeGesture = view->verticalScrollBar()->value();
     QWheelEvent begin(QPointF(12, 12), QPointF(12, 12), {}, {}, Qt::NoButton, Qt::NoModifier,
