@@ -30,6 +30,7 @@ struct SandboxWork
     QString mode;
     int fd = -1;
     int limit = 20;
+    int offset = 0;
     HarmonySandboxDocument document;
     QVector<DocumentItem> documents;
     std::string error;
@@ -98,7 +99,8 @@ void execute(napi_env, void *data)
             task->document =
                 HarmonySandbox::importDocument(task->root, task->name, task->fd, task->kind, task->mode);
         else if (task->operation == Operation::Recent)
-            task->documents = SandboxStore::recentDocuments(task->root, task->mode, task->limit);
+            task->documents =
+                SandboxStore::recentDocuments(task->root, task->mode, task->limit, task->offset);
         else if (task->operation == Operation::FindEdits)
             task->documents = SandboxStore::findEditDocuments(task->root, task->name);
         else
@@ -182,22 +184,29 @@ napi_value importDocument(napi_env env, napi_callback_info info)
 
 napi_value queryDocuments(napi_env env, napi_callback_info info, bool findEdits)
 {
-    size_t count = 3;
-    napi_value values[3];
+    size_t count = 4;
+    napi_value values[4];
     auto task = std::make_unique<SandboxWork>();
     double limit = 0;
+    double offset = 0;
     if (napi_get_cb_info(env, info, &count, values, nullptr, nullptr) != napi_ok ||
-        count != (findEdits ? 2 : 3) || !readString(env, values[0], task->root) ||
+        (findEdits ? count != 2 : (count != 3 && count != 4)) ||
+        !readString(env, values[0], task->root) ||
         !readString(env, values[1], findEdits ? task->name : task->mode) ||
         (!findEdits && (napi_get_value_double(env, values[2], &limit) != napi_ok ||
-                        !(limit >= 1 && limit <= 100) || limit != static_cast<int>(limit))))
+                        !(limit >= 1 && limit <= 100) || limit != static_cast<int>(limit))) ||
+        (!findEdits && count == 4 &&
+         (napi_get_value_double(env, values[3], &offset) != napi_ok ||
+          !(offset >= 0 && offset <= INT_MAX) || offset != static_cast<int>(offset))))
     {
-        napi_throw_type_error(env, "HARMONY_SANDBOX_INVALID_ARGUMENT",
-                              "查询需要沙箱目录、类型或文件名，最近任务数量为 1 到 100");
+        napi_throw_type_error(
+            env, "HARMONY_SANDBOX_INVALID_ARGUMENT",
+            "查询需要沙箱目录、类型或文件名，数量为 1 到 100，分页偏移为非负整数");
         return nullptr;
     }
     task->operation = findEdits ? Operation::FindEdits : Operation::Recent;
     task->limit = static_cast<int>(limit);
+    task->offset = static_cast<int>(offset);
     return queue(env, std::move(task));
 }
 

@@ -1,5 +1,6 @@
 // 格式弹窗内容：与系统背板共用固定宽度，背景、圆角和阴影由外层统一绘制。
 import { DocumentKind } from '../utils/DocumentStore';
+import { HomeDialog } from './HomeDialog';
 
 export const HOME_FORMAT_DIALOG_WIDTH: number = 360;
 
@@ -7,7 +8,8 @@ export enum HomeFeature {
   None,
   Preview,
   Edit,
-  Convert
+  Convert,
+  Workspaces
 }
 
 @Component
@@ -41,39 +43,13 @@ export struct HomeFormatDialog {
   }
 
   build() {
-    Stack({ alignContent: Alignment.TopEnd }) {
-      Column({ space: 16 }) {
-        Text(this.title)
-          .fontSize(18)
-          .fontWeight(FontWeight.Normal)
-          .fontColor($r('app.color.home_text'))
-          .width('100%')
-          .textAlign(TextAlign.Start)
-        this.formatOptions()
-      }
-      .width('100%')
-      .padding({ top: 40, right: 24, bottom: 24, left: 24 })
-      .alignItems(HorizontalAlign.Center)
-      Button({ type: ButtonType.Normal }) {
-        Image($r('app.media.home_close'))
-          .width(18)
-          .height(18)
-          .objectFit(ImageFit.Contain)
-          .draggable(false)
-      }
-      .width(28)
-      .height(28)
-      .padding(0)
-      .margin({ top: 8, right: 8 })
-      .backgroundColor(Color.Transparent)
-      .borderRadius(8)
-      .hoverEffect(HoverEffect.Auto)
-      .accessibilityText('关闭格式选择窗口')
-      .onClick(() => this.onCloseRequested())
+    HomeDialog({
+      title: this.title,
+      dialogWidth: HOME_FORMAT_DIALOG_WIDTH,
+      onCloseRequested: this.onCloseRequested
+    }) {
+      this.formatOptions()
     }
-    // 内外使用同一宽度，避免默认背板在内容四周留下透明空白。
-    .width(HOME_FORMAT_DIALOG_WIDTH)
-    .backgroundColor(Color.Transparent)
   }
 
   @Builder

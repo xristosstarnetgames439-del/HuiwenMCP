@@ -23,6 +23,43 @@ void require(bool condition, const char *message)
         throw std::runtime_error(message);
 }
 
+// 独立样本超过一百条，覆盖十条分页、末页、越界和旧查询默认值。
+void checkRecentPages(const std::filesystem::path &root)
+{
+    namespace fs = std::filesystem;
+    const auto now = fs::file_time_type::clock::now();
+    for (int index = 0; index < 105; ++index)
+    {
+        const auto task = root / "preview" / ("20261031_120000_page_" + std::to_string(index));
+        fs::create_directories(task);
+        std::ofstream(task / "document.md") << "# document\n";
+        fs::last_write_time(task, now + std::chrono::seconds(index));
+    }
+    const QString filesDir = QString::fromStdString(root.u8string());
+    const auto first = SandboxStore::recentDocuments(filesDir, "all", 10);
+    const auto second = SandboxStore::recentDocuments(filesDir, "all", 10, 10);
+    const auto tail = SandboxStore::recentDocuments(filesDir, "all", 10, 100);
+    require(first.size() == 10 && second.size() == 10 && tail.size() == 5,
+            "分页不能截断一百条之后的任务，末页应返回实际剩余数量");
+    require(first.last().lastUsedAt > second.first().lastUsedAt &&
+                second.last().lastUsedAt > tail.first().lastUsedAt,
+            "各页应保持最近时间降序且不重复");
+    require(SandboxStore::recentDocuments(filesDir, "all", 10, 105).isEmpty(),
+            "读到末尾之后应返回空页");
+    require(SandboxStore::recentDocuments(filesDir, "all", 3).size() == 3,
+            "首页原有的最近三条查询必须保持兼容");
+    bool rejected = false;
+    try
+    {
+        SandboxStore::recentDocuments(filesDir, "all", 10, -1);
+    }
+    catch (const std::exception &)
+    {
+        rejected = true;
+    }
+    require(rejected, "分页偏移不能为负数");
+}
+
 void logMessage(QtMsgType type, const QMessageLogContext &, const QString &message)
 {
     if (message.contains(QStringLiteral("QApplication was not created in the main() thread")))
@@ -63,6 +100,7 @@ int main(int argc, char *argv[])
                     const QString taskPath = QString::fromStdString(task.u8string());
                     const auto recent = SandboxStore::recentDocuments(filesDir, "all", 3);
                     require(recent.size() == 1, "最近任务读取失败");
+                    checkRecentPages(root / "pagination");
                     const auto document = SandboxStore::loadTask(filesDir, taskPath);
                     require(document.inputPath.toStdString() == input.u8string(), "未恢复原 PDF");
                     require(!fs::exists(fs::u8path(document.outputPath.toStdString())),

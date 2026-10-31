@@ -237,14 +237,13 @@ void SandboxStore::discardDocument(const DocumentItem &document)
 }
 
 QVector<DocumentItem> SandboxStore::recentDocuments(const QString &filesDir, const QString &mode,
-                                                    int limit)
+                                                    int limit, int offset)
 {
-    if (limit < 1 || limit > 100)
-        fail(QStringLiteral("最近任务数量必须在 1 到 100 之间"));
-    auto documents = scan(filesDir, mode);
-    if (documents.size() > limit)
-        documents.resize(limit);
-    return documents;
+    if (limit < 1 || limit > 100 || offset < 0)
+        fail(QStringLiteral("最近任务数量必须在 1 到 100 之间，分页偏移不能为负数"));
+    // 仍扫描元数据确定全局时间顺序；只向调用方返回当前页，不更新任务时间。
+    const auto documents = scan(filesDir, mode);
+    return offset >= documents.size() ? QVector<DocumentItem>{} : documents.mid(offset, limit);
 }
 
 QVector<DocumentItem> SandboxStore::findEditDocuments(const QString &filesDir, const QString &name)

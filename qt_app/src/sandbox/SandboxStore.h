@@ -9,8 +9,10 @@ class SandboxStore
     static DocumentItem createDocument(const QString &filesDir, const QString &name,
                                        const QString &kind, const QString &mode);
     static void discardDocument(const DocumentItem &document);
+    // 按最近使用时间分页；offset 默认为 0，兼容首页原有的最近三条查询。
     static QVector<DocumentItem> recentDocuments(const QString &filesDir,
-                                                 const QString &mode = "all", int limit = 20);
+                                                 const QString &mode = "all", int limit = 20,
+                                                 int offset = 0);
     static QVector<DocumentItem> findEditDocuments(const QString &filesDir, const QString &name);
     // 重新校验 PDF/MD 预览或 PDF→MD 任务，不创建目录或更新时间。
     static DocumentItem loadTask(const QString &filesDir, const QString &taskPath);

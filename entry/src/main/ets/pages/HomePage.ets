@@ -3,9 +3,12 @@ import { bundleManager, common } from '@kit.AbilityKit';
 import { FunctionSidebar } from '../components/FunctionSidebar';
 import { HomeFeatureCard } from '../components/HomeFeatureCard';
 import { RecentWorkspaceList } from '../components/RecentWorkspaceList';
+import { RecentWorkspaceDialog } from '../components/RecentWorkspaceDialog';
 import { HOME_FORMAT_DIALOG_WIDTH, HomeFeature, HomeFormatDialog } from '../components/HomeFormatDialog';
 import { getNativeStatus } from '../services/ConversionService';
-import { listRecentWorkspaces, RecentWorkspace, validateRecentWorkspace } from '../services/RecentWorkspaceService';
+import {
+  listRecentWorkspaces, RecentWorkspace, validateRecentWorkspace, WORKSPACE_PAGE_SIZE
+} from '../services/RecentWorkspaceService';
 import { HomeMoreMenu, HOME_MENU_WIDTH, HOME_MENU_GAP } from '../components/HomeMoreMenu';
 import { HomeAboutDialog } from '../components/HomeAboutDialog';
 import { applyHomeAppearance, HomeAppearance } from '../utils/HomeAppearance';
@@ -33,8 +36,10 @@ struct HomePage {
   @State recentWorkspaces: RecentWorkspace[] = [];
   @State recentLoading: boolean = false;
   @State recentError: string = '';
-  @State formatDialogId: number = -1;
-  @State formatDialogOpening: boolean = false;
+  private homeDialogWidth: number = HOME_FORMAT_DIALOG_WIDTH;
+  private workspaceListHeight: number = 552;
+  @State homeDialogId: number = -1;
+  @State homeDialogOpening: boolean = false;
   private homeVisible: boolean = false;
   private launchTimeout: number = -1;
   private launchVersion: number = 0;
@@ -75,7 +80,7 @@ struct HomePage {
     this.homeVisible = false;
     this.menuOpen = false;
     this.closeAboutDialog();
-    this.closeFormatDialog();
+    this.closeHomeDialog();
     clearTimeout(this.launchTimeout);
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     context.getApplicationContext().eventHub.off('huiwen.workspace.ready', this.workspaceReady);
@@ -112,8 +117,8 @@ struct HomePage {
     if (this.workspaceLaunching) {
       return;
     }
-    // 先收起格式子窗口，避免它残留在即将显示的 Qt 工作区上方。
-    if (!this.closeFormatDialog()) {
+    // 先收起首页子窗口，避免它残留在即将显示的 Qt 工作区上方。
+    if (!this.closeHomeDialog()) {
       return;
     }
     this.workspaceLaunching = true;
@@ -145,52 +150,69 @@ struct HomePage {
     }
   }
 
-  private closeFormatDialog(): boolean {
-    if (this.formatDialogId < 0) {
+  private closeHomeDialog(): boolean {
+    if (this.homeDialogId < 0) {
       return true;
     }
     try {
-      this.getUIContext().getPromptAction().closeCustomDialog(this.formatDialogId);
-      this.formatDialogId = -1;
+      this.getUIContext().getPromptAction().closeCustomDialog(this.homeDialogId);
+      this.homeDialogId = -1;
       return true;
     } catch (error) {
-      this.workspaceError = `关闭格式选择窗口失败：${(error as Error).message}`;
+      this.workspaceError = `关闭首页弹窗失败：${(error as Error).message}`;
       return false;
     }
   }
 
   @Builder
-  formatDialogContent() {
-    HomeFormatDialog({
-      feature: this.activeFeature,
-      title: this.activeFeature === HomeFeature.Preview ? '请选择要预览的格式' :
-        this.activeFeature === HomeFeature.Edit ? '请选择要编辑的格式' : '请选择要转化的格式',
-      onCloseRequested: () => {
-        this.closeFormatDialog();
-      },
-      onConvertRequested: () => {
-        this.openWorkspace();
-      },
-      onPreviewRequested: (kind: DocumentKind) => {
-        this.openWorkspace('', DocumentMode.Preview, kind);
-      }
-    })
+  homeDialogContent() {
+    if (this.activeFeature === HomeFeature.Workspaces) {
+      RecentWorkspaceDialog({
+        dialogWidth: this.homeDialogWidth,
+        listHeight: this.workspaceListHeight,
+        available: !this.workspaceLaunching,
+        onCloseRequested: () => {
+          this.closeHomeDialog();
+        },
+        onOpen: (taskPath: string) => this.openWorkspace(taskPath)
+      })
+    } else {
+      HomeFormatDialog({
+        feature: this.activeFeature,
+        title: this.activeFeature === HomeFeature.Preview ? '请选择要预览的格式' :
+          this.activeFeature === HomeFeature.Edit ? '请选择要编辑的格式' : '请选择要转化的格式',
+        onCloseRequested: () => {
+          this.closeHomeDialog();
+        },
+        onConvertRequested: () => {
+          this.openWorkspace();
+        },
+        onPreviewRequested: (kind: DocumentKind) => {
+          this.openWorkspace('', DocumentMode.Preview, kind);
+        }
+      })
+    }
   }
 
   private async selectFeature(feature: HomeFeature): Promise<void> {
-    if (this.workspaceLaunching || this.formatDialogOpening || this.formatDialogId >= 0) {
+    if (this.workspaceLaunching || this.homeDialogOpening || this.homeDialogId >= 0) {
       return;
     }
     this.activeFeature = feature;
+    // 复用同一个弹窗，只为全部工作区扩大背板，并限制列表最多可见十条。
+    this.homeDialogWidth = feature === HomeFeature.Workspaces ?
+      Math.min(720, this.availableWidth - 32) : HOME_FORMAT_DIALOG_WIDTH;
+    this.workspaceListHeight = Math.min(WORKSPACE_PAGE_SIZE * 48 +
+      (WORKSPACE_PAGE_SIZE - 1) * 8, Math.max(48, this.availableHeight - 160));
     this.menuOpen = false;
     this.workspaceError = '';
-    this.formatDialogOpening = true;
+    this.homeDialogOpening = true;
     try {
       const promptAction = this.getUIContext().getPromptAction();
       // 按自定义弹窗模板保存系统返回的 ID，由首页统一管理打开和关闭。
       const dialogId = await promptAction.openCustomDialog({
         builder: () => {
-          this.formatDialogContent();
+          this.homeDialogContent();
         },
         alignment: DialogAlignment.Center,
         showInSubWindow: true,
@@ -198,13 +220,13 @@ struct HomePage {
         isModal: false,
         autoCancel: true,
         // 背板与内容共用固定宽度，只由背板绘制背景、圆角及阴影。
-        width: HOME_FORMAT_DIALOG_WIDTH,
+        width: this.homeDialogWidth,
         backgroundColor: $r('app.color.home_surface'),
         backgroundBlurStyle: BlurStyle.NONE,
         cornerRadius: 16,
         shadow: { radius: 16, color: '#22000000', offsetX: 0, offsetY: 6 },
         onWillDismiss: (action: DismissDialogAction) => {
-          this.formatDialogId = -1;
+          this.homeDialogId = -1;
           action.dismiss();
         }
       });
@@ -213,11 +235,11 @@ struct HomePage {
         promptAction.closeCustomDialog(dialogId);
         return;
       }
-      this.formatDialogId = dialogId;
+      this.homeDialogId = dialogId;
     } catch (error) {
-      this.workspaceError = `打开格式选择窗口失败：${(error as Error).message}`;
+      this.workspaceError = `打开首页弹窗失败：${(error as Error).message}`;
     } finally {
-      this.formatDialogOpening = false;
+      this.homeDialogOpening = false;
     }
   }
 
@@ -232,7 +254,7 @@ struct HomePage {
             this.menuAnchorBottom = bottom;
           },
           onMenuRequested: () => {
-            if (!this.workspaceLaunching && this.formatDialogId < 0 && !this.formatDialogOpening &&
+            if (!this.workspaceLaunching && this.homeDialogId < 0 && !this.homeDialogOpening &&
               this.aboutDialogId < 0 && !this.aboutDialogOpening) {
               this.menuOpen = !this.menuOpen;
             }
@@ -474,8 +496,9 @@ struct HomePage {
           workspaces: this.recentWorkspaces,
           loading: this.recentLoading,
           error: this.recentError,
-          available: !this.workspaceLaunching && !this.formatDialogOpening && this.formatDialogId < 0,
-          onOpen: (taskPath: string) => this.openWorkspace(taskPath)
+          available: !this.workspaceLaunching && !this.homeDialogOpening && this.homeDialogId < 0,
+          onOpen: (taskPath: string) => this.openWorkspace(taskPath),
+          onViewAll: () => this.selectFeature(HomeFeature.Workspaces)
         })
         .margin({ top: 70 })
         .flexShrink(0)

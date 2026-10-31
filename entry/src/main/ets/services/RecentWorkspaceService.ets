@@ -1,9 +1,10 @@
-// 最近任务只读取沙箱目录，不创建索引；数量通过参数统一控制，默认展示三条。
+// 最近任务只读取沙箱目录；首页默认三条，全部工作区按十条分页，不创建索引。
 import { common } from '@kit.AbilityKit';
 import nativeBridge, { HarmonySandboxDocument } from 'libhuiwen_native.so';
 import { getRecentDocuments } from '../utils/DocumentStore';
 
 export const DEFAULT_RECENT_WORKSPACE_LIMIT: number = 3;
+export const WORKSPACE_PAGE_SIZE: number = 10;
 
 export interface RecentWorkspace {
   taskPath: string;
@@ -34,8 +35,8 @@ function formatLabel(document: HarmonySandboxDocument): string {
 }
 
 export async function listRecentWorkspaces(context: common.UIAbilityContext,
-  limit: number = DEFAULT_RECENT_WORKSPACE_LIMIT): Promise<RecentWorkspace[]> {
-  const documents = await getRecentDocuments(context, limit, 'all');
+  limit: number = DEFAULT_RECENT_WORKSPACE_LIMIT, offset: number = 0): Promise<RecentWorkspace[]> {
+  const documents = await getRecentDocuments(context, limit, 'all', offset);
   return documents.map((document: HarmonySandboxDocument): RecentWorkspace => {
     return {
       taskPath: document.taskPath,

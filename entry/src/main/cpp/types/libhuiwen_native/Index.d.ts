@@ -23,8 +23,9 @@ interface HuiwenNative {
   harmonyValidateOutput(filesDir: string, path: string): string;
   // 校验预览任务目录或 input/output 目录；转换前也能打开空输出目录。
   harmonyValidateTaskDirectory(filesDir: string, path: string): string;
-  // 后台读取三类目录，以最近使用时间降序返回；mode 为 all/preview/edit/convert。
-  harmonyRecentDocuments(filesDir: string, mode: string, limit: number): Promise<HarmonySandboxDocument[]>;
+  // 后台按最近使用时间降序分页；mode 为 all/preview/edit/convert，offset 默认 0。
+  harmonyRecentDocuments(filesDir: string, mode: string, limit: number,
+    offset?: number): Promise<HarmonySandboxDocument[]>;
   // 读取并校验 PDF/MD 预览或 PDF→MD 任务，Qt 确认载入后才更新使用时间。
   harmonyLoadTask(filesDir: string, taskPath: string): Promise<HarmonySandboxDocument>;
   // 返回所有同名编辑缓存，openPath 优先指向已有 output，查询本身不修改时间。

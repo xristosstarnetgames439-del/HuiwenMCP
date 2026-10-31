@@ -69,10 +69,10 @@ export async function pickDocumentToSandbox(context: common.UIAbilityContext, ki
   }
 }
 
-// 首页最近工作区复用此入口；查询本身不修改任务时间，数量由调用方传入。
+// 首页和全部工作区复用分页入口；查询本身不修改任务时间。
 export function getRecentDocuments(context: common.UIAbilityContext, limit: number = 5,
-  mode: string = 'all'): Promise<HarmonySandboxDocument[]> {
-  return nativeBridge.harmonyRecentDocuments(context.getApplicationContext().filesDir, mode, limit);
+  mode: string = 'all', offset: number = 0): Promise<HarmonySandboxDocument[]> {
+  return nativeBridge.harmonyRecentDocuments(context.getApplicationContext().filesDir, mode, limit, offset);
 }
 
 // 按原文件名查找编辑缓存；多个结果留给调用页面选择，避免同名文件误复用。
