@@ -24,12 +24,8 @@ export enum DocumentMode {
   Convert = 'convert'
 }
 
-export interface PickedDocument extends HarmonySandboxDocument {
-  uri: string;
-}
-
 export async function pickDocumentToSandbox(context: common.UIAbilityContext, kind: DocumentKind,
-  mode: DocumentMode = DocumentMode.Preview): Promise<PickedDocument | null> {
+  mode: DocumentMode = DocumentMode.Preview): Promise<HarmonySandboxDocument | null> {
   const options = new picker.DocumentSelectOptions();
   options.maxSelectNumber = 1;
   options.fileSuffixFilters = kind === DocumentKind.PDF ? ['PDF|.pdf'] :
@@ -54,20 +50,8 @@ export async function pickDocumentToSandbox(context: common.UIAbilityContext, ki
     throw importError('打开所选文件', error as BusinessError);
   }
   try {
-    const document: HarmonySandboxDocument = await nativeBridge.harmonyImportDocument(
+    return await nativeBridge.harmonyImportDocument(
       context.getApplicationContext().filesDir, name, source.fd, kind, mode);
-    const result: PickedDocument = {
-      name: document.name,
-      kind: document.kind,
-      mode: document.mode,
-      taskPath: document.taskPath,
-      uri,
-      inputPath: document.inputPath,
-      outputPath: document.outputPath,
-      openPath: document.openPath,
-      lastUsedAt: document.lastUsedAt
-    };
-    return result;
   } finally {
     await fileIo.close(source);
   }
@@ -77,14 +61,4 @@ export async function pickDocumentToSandbox(context: common.UIAbilityContext, ki
 export function getRecentDocuments(context: common.UIAbilityContext, limit: number = 5,
   mode: string = 'all', offset: number = 0): Promise<HarmonySandboxDocument[]> {
   return nativeBridge.harmonyRecentDocuments(context.getApplicationContext().filesDir, mode, limit, offset);
-}
-
-// 按原文件名查找编辑缓存；多个结果留给调用页面选择，避免同名文件误复用。
-export function findEditCaches(context: common.UIAbilityContext, name: string): Promise<HarmonySandboxDocument[]> {
-  return nativeBridge.harmonyFindEditCaches(context.getApplicationContext().filesDir, name);
-}
-
-// 页面成功打开或保存后调用；仅查询缓存时不更新时间。
-export function markDocumentUsed(context: common.UIAbilityContext, taskPath: string): void {
-  nativeBridge.harmonyMarkUsed(context.getApplicationContext().filesDir, taskPath);
 }

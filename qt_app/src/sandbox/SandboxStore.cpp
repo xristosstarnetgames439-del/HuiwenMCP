@@ -246,17 +246,6 @@ QVector<DocumentItem> SandboxStore::recentDocuments(const QString &filesDir, con
     return offset >= documents.size() ? QVector<DocumentItem>{} : documents.mid(offset, limit);
 }
 
-QVector<DocumentItem> SandboxStore::findEditDocuments(const QString &filesDir, const QString &name)
-{
-    const QString fileName = safeName(name);
-    auto documents = scan(filesDir, "edit");
-    documents.erase(std::remove_if(documents.begin(), documents.end(),
-                                   [&fileName](const DocumentItem &item)
-                                   { return QFileInfo(item.inputPath).fileName() != fileName; }),
-                    documents.end());
-    return documents;
-}
-
 void SandboxStore::markUsed(const QString &filesDir, const QString &path)
 {
     const QString task = checkedTask(rootPath(filesDir), path);

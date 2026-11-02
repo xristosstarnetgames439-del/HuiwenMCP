@@ -312,16 +312,14 @@ files/
 - 预览直接保存文件；编辑、转化创建 `input/` 和 `output/`。导入时仅生成输入副本及预定输出路径，输出文件在实际保存或转化时生成。失败重试沿用当前任务目录，重新选取文件创建新目录。
 - 目录名时间表示创建时间，任务目录的修改时间表示最近使用时间。导入完成、PDF 成功打开、转换开始及结束都会显式更新任务目录修改时间；时间写入失败记录 `HUIWEN_SANDBOX stage=touch_failed`，不会把已经成功的转换改判失败。扫描列表和查询缓存本身不更新时间，也不修改目录名。
 - 最近任务只扫描三类目录的一层任务子目录，合并后按 `lastUsedAt`（毫秒时间戳）降序，时间相同时按任务目录名排序。跳过无输入、失效目录、越界符号链接或不可读缓存；旧目录继续支持输出定位，但不伪造旧任务记录。
-- 按文件名查询编辑缓存会返回全部同名候选，按最近使用排序。`openPath` 优先指向已有、可读的 `output/原文件名`，尚无输出时指向 `input/原文件名`；输出已存在但无效时跳过该候选。调用页面可对唯一结果直接打开、多个结果展示选择，成功打开或保存后再标记使用。
+- 扫描历史编辑任务时，`openPath` 优先指向已有、可读的 `output/原文件名`，尚无输出时指向 `input/原文件名`；输出已存在但无效时跳过该任务。编辑目录及扫描兼容保留，当前不提供未使用的同名缓存查询接口。
 
 | ArkTS 入口（`utils/DocumentStore.ets`） | 用途 |
 | --- | --- |
 | `pickDocumentToSandbox(context, kind, DocumentMode.Preview|Edit|Convert)` | 系统选取、授权读取并按类型归档；取消不创建任务 |
 | `getRecentDocuments(context, limit = 5, mode = 'all')` | 后台读取最近任务，数量为 1–100；可筛选任一类型 |
-| `findEditCaches(context, name)` | 按原文件名查找所有同名编辑缓存，返回候选与 `openPath` |
-| `markDocumentUsed(context, taskPath)` | 未来预览/编辑页面在实际打开或保存后更新时间 |
 
-这些接口通过 NAPI 调用同一份 `SandboxStore`，返回名称、格式、模式、`taskPath`、`inputPath`、`outputPath`、`openPath` 和 `lastUsedAt`。Qt 侧可直接使用 `SandboxStore::recentDocuments()`、`findEditDocuments()`、`markUsed()`。首页已接最近工作区列表；同名候选选择 UI 和独立编辑工作区仍未接入，首页预览和编辑入口仍只展示格式选项。
+这些接口通过 NAPI 调用同一份 `SandboxStore`，返回名称、格式、模式、`taskPath`、`inputPath`、`outputPath`、`openPath` 和 `lastUsedAt`；选取成功直接返回导入结果，不再额外复制字段或附带未使用的 URI。Qt 侧继续使用 `SandboxStore::recentDocuments()`、`markUsed()`，在实际导入、打开或转换后更新使用时间。首页已接最近工作区列表与预览工作区，编辑入口仍只展示格式选项。
 
 ## 首页最近工作区
 

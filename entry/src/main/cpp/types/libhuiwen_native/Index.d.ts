@@ -28,10 +28,6 @@ interface HuiwenNative {
     offset?: number): Promise<HarmonySandboxDocument[]>;
   // 读取并校验 PDF/MD 预览或 PDF→MD 任务，Qt 确认载入后才更新使用时间。
   harmonyLoadTask(filesDir: string, taskPath: string): Promise<HarmonySandboxDocument>;
-  // 返回所有同名编辑缓存，openPath 优先指向已有 output，查询本身不修改时间。
-  harmonyFindEditCaches(filesDir: string, name: string): Promise<HarmonySandboxDocument[]>;
-  // 实际打开、保存或转换后显式更新任务目录修改时间。
-  harmonyMarkUsed(filesDir: string, path: string): void;
   // 将模式、文档类型与回调一起交给 Qt；回调仍在 ArkTS 线程处理系统操作。
   registerWorkspace(callback: (event: string) => void, mode: string, kind: string): void;
   clearWorkspace(): void;
