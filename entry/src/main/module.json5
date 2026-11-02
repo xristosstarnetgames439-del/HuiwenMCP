@@ -25,6 +25,10 @@
       {
         "package": "huiwen_python.hnp",
         "type": "private"
+      },
+      {
+        "package": "huiwen_doc2docx.hnp",
+        "type": "private"
       }
     ],
     // 首页、Qt 工作区及各自启动页统一使用汇文应用图标。

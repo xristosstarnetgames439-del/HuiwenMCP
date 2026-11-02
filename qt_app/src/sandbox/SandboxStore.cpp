@@ -274,7 +274,7 @@ DocumentItem SandboxStore::loadTask(const QString &filesDir, const QString &task
     const QString task = checkedTask(root, taskPath);
     const QString mode = QDir(root).relativeFilePath(task).section('/', 0, 0);
     if (task != taskPath || (mode != "preview" && mode != "convert"))
-        fail(QStringLiteral("当前仅支持 PDF/MD/DOCX 预览和 PDF 转 MD 任务"));
+        fail(QStringLiteral("当前仅支持 PDF/MD/Word 预览和 PDF 转 MD 任务"));
     // 预览文档直接位于任务目录，转化任务继续使用 input/output；校验不创建目录。
     const QString inputDir =
         mode == "preview" ? task : validateTaskDirectory(root, task + "/input");
@@ -283,10 +283,7 @@ DocumentItem SandboxStore::loadTask(const QString &filesDir, const QString &task
     for (const QFileInfo &input : inputs)
     {
         const QString kind = kindOf(input.fileName());
-        const bool supportedPreview =
-            mode == "preview" &&
-            (kind == "md" ||
-             (kind == "word" && input.suffix().compare("docx", Qt::CaseInsensitive) == 0));
+        const bool supportedPreview = mode == "preview" && (kind == "md" || kind == "word");
         if (kind != "pdf" && !supportedPreview)
             continue;
         // 恢复前校验运行在 NAPI 工作线程；QFile 是 QObject，会提前占用 Qt 主线程标识。

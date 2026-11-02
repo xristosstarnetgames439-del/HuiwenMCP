@@ -29,6 +29,7 @@ class DocumentView : public QStackedWidget
     void setDocument(const QString &path, const QString &kind, const QString &name = {});
     bool hasDocument() const { return !path_.isEmpty(); }
     void setBusy(bool busy);
+    void showLoading(const QString &message);
     void setPreviewMode(bool preview);
     bool isPreviewReady() const;
     void setScrollPosition(int page, double fraction, double progress);

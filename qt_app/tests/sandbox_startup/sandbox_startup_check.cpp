@@ -157,17 +157,13 @@ int main(int argc, char *argv[])
                     fs::create_directories(legacyWord);
                     const auto legacyFile = legacyWord / "document.doc";
                     std::ofstream(legacyFile, std::ios::binary) << "legacy doc";
-                    bool unsupported = false;
-                    try
-                    {
-                        SandboxStore::loadTask(filesDir,
-                                               QString::fromStdString(legacyWord.u8string()));
-                    }
-                    catch (const std::exception &)
-                    {
-                        unsupported = true;
-                    }
-                    require(unsupported && fs::exists(legacyFile), "旧 DOC 应拒绝预览并保留归档");
+                    const auto legacy = SandboxStore::loadTask(
+                        filesDir, QString::fromStdString(legacyWord.u8string()));
+                    require(legacy.kind == "word" && legacy.mode == "preview" &&
+                                legacy.inputPath.toStdString() == legacyFile.u8string() &&
+                                legacy.openPath == legacy.inputPath &&
+                                legacy.outputPath.isEmpty() && fs::exists(legacyFile),
+                            "DOC 恢复原始输入，由工作区转换临时 DOCX，不改归档");
                 }
                 catch (...)
                 {

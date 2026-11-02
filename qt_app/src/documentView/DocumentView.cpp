@@ -54,6 +54,15 @@ void DocumentView::setBusy(bool busy)
     card_->setEnabled(!busy && (selectableWhenEmpty_ || hasDocument()));
 }
 
+void DocumentView::showLoading(const QString &message)
+{
+    setCurrentIndex(0);
+    renderer_->setDocument({});
+    path_.clear();
+    card_->setPrompt(message, false);
+    setBusy(true);
+}
+
 void DocumentView::setPreviewMode(bool preview)
 {
     previewMode_ = preview;

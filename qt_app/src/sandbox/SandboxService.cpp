@@ -65,14 +65,15 @@ void SandboxService::selectDocument(const QString &kind, const QString &mode)
 #else
     const bool markdown = kind == "md";
     const bool word = kind == "word";
-    const QString file = QFileDialog::getOpenFileName(nullptr,
-                                                      word ? QStringLiteral("请选择 Word（DOCX）")
-                                                      : markdown ? QStringLiteral("请选择 Markdown")
-                                                                 : QStringLiteral("请选择 PDF"),
-                                                      {},
-                                                      word       ? "Word (*.docx)"
-                                                      : markdown ? "Markdown (*.md *.markdown)"
-                                                                 : "PDF (*.pdf)");
+    const QString file =
+        QFileDialog::getOpenFileName(nullptr,
+                                     word       ? QStringLiteral("请选择 Word（DOC / DOCX）")
+                                     : markdown ? QStringLiteral("请选择 Markdown")
+                                                : QStringLiteral("请选择 PDF"),
+                                     {},
+                                     word       ? "Word (*.doc *.docx)"
+                                     : markdown ? "Markdown (*.md *.markdown)"
+                                                : "PDF (*.pdf)");
     if (!file.isEmpty())
     {
         DocumentItem document;

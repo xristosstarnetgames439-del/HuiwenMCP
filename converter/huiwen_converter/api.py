@@ -28,3 +28,10 @@ def pdf_to_md(input_path: str | Path, output_path: str | Path) -> Path:
     finally:
         temporary_path.unlink(missing_ok=True)
     return target
+
+
+def doc_to_docx(input_path: str | Path, output_path: str | Path) -> Path:
+    """使用内置 DOC 核心静默转换；预览及输出清理由调用方负责。"""
+    from ._word_adapter import doc_to_docx as convert_word
+
+    return convert_word(input_path, output_path)

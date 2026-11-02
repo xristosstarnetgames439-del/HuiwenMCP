@@ -4,10 +4,11 @@
 固定主项目记录的提交。PortOne 核心修改在子模块提交、推送到我们的 fork。
 外层 `library.ts`、`build.mjs`、`check_build.mjs`、依赖锁文件及本说明属于主仓库。
 
-首页“文档预览 → Word”进入单栏 Qt 工作区，选择 DOCX 后由 PortOne 的 `readOnly` 模式显示正文。
-支持更换文件、占位图／预览切换、所在目录及最近任务恢复；旧版 `.doc` 不进入此预览入口。
+首页“文档预览 → Word”进入单栏 Qt 工作区，选择 DOCX 后由 PortOne 的 `readOnly` 模式显示正文；
+选择 DOC 时先显示加载提示，后台转成临时 DOCX 后复用同一预览器。
+支持更换文件、占位图／预览切换、所在目录及 DOC／DOCX 最近任务恢复。
 Word 和 Markdown 通过 `CefDocumentPreviewWidget` 共用 CEF 运行时、原生窗口定位与关闭流程。
-库显示连续纸张和近似分页线；本阶段不开放编辑、批注修改、保存或格式转换。
+库显示连续纸张和近似分页线；本阶段不开放编辑、批注修改、保存或手动格式转换。
 上游 Apache-2.0 许可、第三方声明和实际打入包的依赖许可随资源分发。
 
 ## 克隆和 Run
@@ -46,3 +47,13 @@ node third_party/word/check_build.mjs
 自检使用临时副本，不修改真实 fork。本次页面接入只做格式和静态检查，
 尚未执行资源构建、C++ 编译、HAP 打包或设备运行。
 验收需重新 Run，检查正文、表格／图片、窗口缩放、切换文档、占位图切换、错误提示及最近任务重开。
+
+## 独立 DOC 转换接口
+
+DOC → DOCX 接口位于 `converter/huiwen_converter`，说明见
+[独立静默转换](../../converter/word2docx/README.md)。
+该接口不修改本目录的 JS、资源构建、CEF 参数或现有 DOCX 预览流程。
+真实 DOC 的解析／生成核心现已单独打入 `huiwen_doc2docx.hnp`，复用已有鸿蒙 Python；
+Qt 工作区允许选择 DOC／DOCX。DOC 先显示加载提示，后台生成任务内临时 DOCX，再交给原有预览器；
+DOCX 直接沿用原流程。临时副本在更换文件／关闭工作区时清理，最近任务保留 DOC 并在恢复时重新转换。
+本目录 JS／CEF 渲染逻辑保持原样，设备安装与执行仍需自行 Run 验证。

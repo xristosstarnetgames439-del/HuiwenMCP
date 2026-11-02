@@ -115,12 +115,16 @@ std::string FindPythonRoot()
     }
     throw std::runtime_error("未找到私有 HNP 解释器；请确认 huiwen_python.hnp 已随 HAP 安装。HNP_PRIVATE_HOME=" + base);
 }
-std::string RunPythonScript(bool convert, const std::vector<std::string> &paths, const char *successMarker,
-                            const char *action, int *exitCode = nullptr)
+std::string RunPythonScript(bool convert, const std::vector<std::string> &paths,
+                            const char *successMarker, const char *action, int *exitCode = nullptr,
+                            const std::string &fixedScript = {})
 {
     const std::string root = FindPythonRoot();
     const std::string python = root + "/bin/python3";
     std::string script;
+    if (!fixedScript.empty())
+        script = fixedScript;
+    else
     {
         std::lock_guard<std::mutex> lock(bundleMutex);
         script = convert ? businessBundle : root + "/share/huiwen/python_smoke.py";
@@ -153,8 +157,10 @@ std::string RunPythonScript(bool convert, const std::vector<std::string> &paths,
     posix_spawn_file_actions_addclose(&actions, outputPipe[1]);
 
     // 参数直接传给固定脚本，不经过 Shell。
-    std::vector<char *> args = {const_cast<char *>(python.c_str()), const_cast<char *>("-B"), const_cast<char *>("-u"),
-                                const_cast<char *>(script.c_str())};
+    std::vector<char *> args = {const_cast<char *>(python.c_str()), const_cast<char *>("-B"),
+                                const_cast<char *>("-u"), const_cast<char *>(script.c_str())};
+    if (!fixedScript.empty())
+        args.insert(args.begin() + 1, const_cast<char *>("-I"));
     for (const auto &path : paths)
     {
         args.push_back(const_cast<char *>(path.c_str()));
@@ -352,4 +358,46 @@ std::string RunPdfConversion(const std::string &inputPath, const std::string &ou
         throw std::runtime_error("[code=" + std::to_string(result.code) + "] " + result.message);
     }
     return result.outputPath;
+}
+
+std::string RunDocConversion(const std::string &inputPath, const std::string &outputPath)
+{
+    if (inputPath.empty() || outputPath.empty())
+        throw std::runtime_error("DOC 转换需要输入和输出路径");
+    const char *home = std::getenv("HNP_PRIVATE_HOME");
+    const std::string base = home && home[0] ? home : "/data/app";
+    constexpr char package[] =
+        "/huiwen_doc2docx.org/huiwen_doc2docx_1.0.0/share/huiwen/convert_word.pyz";
+    std::string script;
+    for (const auto &candidate : {base + "/" + kBundleName + package, base + package})
+        if (access(candidate.c_str(), R_OK) == 0)
+        {
+            script = candidate;
+            break;
+        }
+    if (script.empty())
+        throw std::runtime_error(
+            "未找到私有 DOC 转换 HNP，请重新 Run 安装包含 huiwen_doc2docx.hnp 的应用包");
+    int exitCode = -1;
+    const auto line = RunPythonScript(false, {inputPath, outputPath, "--json"},
+                                      "HUIWEN_CONVERT_RESULT", "DOC 转换", &exitCode, script);
+    if (line.compare(0, sizeof(kResultPrefix) - 1, kResultPrefix) != 0)
+        throw std::runtime_error("DOC 转换进程未返回结果");
+    QJsonParseError error;
+    const auto document = QJsonDocument::fromJson(
+        QByteArray::fromStdString(line.substr(sizeof(kResultPrefix) - 1)), &error);
+    const auto result = document.object();
+    const auto code = result.value("code");
+    const auto path = result.value("outputPath").toString();
+    const auto message = result.value("message").toString();
+    if (error.error != QJsonParseError::NoError || !document.isObject() || !code.isDouble() ||
+        code.toDouble() != code.toInt(-1) || code.toInt(-1) < 0 || message.isEmpty() ||
+        !result.value("outputPath").isString() || (code.toInt() == 0) != (exitCode == 0) ||
+        (code.toInt() == 0 ? path.toStdString() != outputPath : !path.isEmpty()))
+        throw std::runtime_error("DOC 转换结果协议异常");
+    if (code.toInt() != 0)
+        throw std::runtime_error(message.toStdString());
+    if (access(outputPath.c_str(), R_OK) != 0)
+        throw std::runtime_error("生成的 DOCX 无法读取");
+    return outputPath;
 }

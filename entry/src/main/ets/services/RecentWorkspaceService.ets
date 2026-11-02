@@ -44,10 +44,11 @@ export async function listRecentWorkspaces(context: common.UIAbilityContext,
       mode: document.mode,
       formatLabel: formatLabel(document),
       timeLabel: formatTime(document.lastUsedAt),
-      // Word 只开放 DOCX 只读预览，历史 DOC 归档仍保留但不进入渲染器。
+      // DOC 恢复后由工作区静默转换；渲染器仍只接收 DOCX。
       canOpen: (document.mode === 'convert' && document.kind === 'pdf') ||
         (document.mode === 'preview' && (document.kind === 'pdf' || document.kind === 'md' ||
-          (document.kind === 'word' && document.name.toLowerCase().endsWith('.docx'))))
+          (document.kind === 'word' && (document.name.toLowerCase().endsWith('.doc') ||
+            document.name.toLowerCase().endsWith('.docx')))))
     };
   });
 }

@@ -12,3 +12,7 @@
 [submodule "third_party/markdown/source"]
 	path = third_party/markdown/source
 	url = https://github.com/xristosstarnetgames439-del/huiwen-markdown.git
+[submodule "third_party/doc2docx"]
+	path = third_party/doc2docx/source
+	url = https://github.com/xristosstarnetgames439-del/doc2docx.git
+	branch = main

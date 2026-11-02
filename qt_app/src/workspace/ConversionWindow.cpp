@@ -26,8 +26,8 @@
 ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWidget *parent)
     : QWidget(parent), mode_(mode), kind_(kind), splitter_(new WorkspaceSplitter(this)),
       source_(
-          kind == "word"
-              ? new DocumentView(new WordPreviewWidget, QStringLiteral("请选择 Word（DOCX）"), true)
+          kind == "word" ? new DocumentView(new WordPreviewWidget,
+                                            QStringLiteral("请选择 Word（DOC / DOCX）"), true)
           : kind == "md"
               ? new DocumentView(new MarkdownPreviewWidget, QStringLiteral("请选择 Markdown"), true)
               : new DocumentView(new PdfPreviewWidget, QStringLiteral("请选择 PDF"), true)),
@@ -42,6 +42,8 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
         button_ = new ConvertButton(this);
         conversion_ = new ConversionService(this);
     }
+    else if (kind_ == "word")
+        conversion_ = new ConversionService(this);
     setWindowTitle(conversion ? QStringLiteral("汇文MCP · 转换工作区")
                               : QStringLiteral("汇文MCP · %1 预览")
                                     .arg(kind_ == "word" ? "Word"
@@ -106,12 +108,12 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
     connect(sandbox_, &SandboxService::documentSelected, this, &ConversionWindow::showDocument);
     connect(sandbox_, &SandboxService::restorationRequested, this,
             &ConversionWindow::restoreDocument);
-    connect(sandbox_, &SandboxService::selectionFinished, this,
-            [this]
-            {
-                picking_ = false;
-                refreshBusyState();
-            });
+    connect(sandbox_, &SandboxService::selectionFinished, this, [this] {
+        picking_ = false;
+        if (status_->text() == QStringLiteral("正在选择文件…"))
+            status_->clear();
+        refreshBusyState();
+    });
     connect(sandbox_, &SandboxService::failed, status_, &QLabel::setText);
     if (result_)
     {
@@ -153,13 +155,41 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
                     refreshBusyState();
                 });
         connect(conversion_, &ConversionService::failed, this,
-                [this](int code, const QString &message)
-                {
+                [this](int code, const QString &message) {
                     converting_ = false;
                     retry_ = true;
                     sandbox_->markUsed(document_);
                     status_->setText(QStringLiteral("[code=%1] %2").arg(code).arg(message));
                     refreshBusyState();
+                });
+    }
+    if (!result_ && kind_ == "word")
+    {
+        connect(conversion_, &ConversionService::succeeded, this,
+                [this](const QString &path, const QString &message) {
+                    converting_ = false;
+                    source_->setDocument(path, document_.kind, document_.name);
+                    status_->setText(message);
+                    refreshBusyState();
+                    if (restoringWord_)
+                    {
+                        restoringWord_ = false;
+                        sandbox_->finishRestoration(document_);
+                    }
+                });
+        connect(conversion_, &ConversionService::failed, this,
+                [this](int code, const QString &message) {
+                    converting_ = false;
+                    source_->setDocument({}, QStringLiteral("word"));
+                    conversion_->releaseDocPreview();
+                    const QString error = QStringLiteral("[code=%1] %2").arg(code).arg(message);
+                    status_->setText(error);
+                    refreshBusyState();
+                    if (restoringWord_)
+                    {
+                        restoringWord_ = false;
+                        sandbox_->finishRestoration(document_, error);
+                    }
                 });
     }
     functionBar_->fileMenu()->setPreviewMode(true);
@@ -220,6 +250,7 @@ void ConversionWindow::selectDocument()
     if (picking_ || converting_)
         return;
     picking_ = true;
+    status_->setText(QStringLiteral("正在选择文件…"));
     refreshBusyState();
     sandbox_->selectDocument(kind_, mode_);
 }
@@ -229,7 +260,20 @@ void ConversionWindow::showDocument(const DocumentItem &document)
     document_ = document;
     retry_ = false;
     status_->clear();
+    if (document.kind == "word" &&
+        QFileInfo(document.inputPath).suffix().compare("doc", Qt::CaseInsensitive) == 0)
+    {
+        converting_ = true;
+        const QString message = QStringLiteral("正在转换 DOC，请稍候…");
+        source_->showLoading(message);
+        status_->setText(message);
+        refreshBusyState();
+        conversion_->convertDocToDocx(document.inputPath);
+        return;
+    }
     source_->setDocument(document.inputPath, document.kind, document.name);
+    if (document.kind == "word")
+        conversion_->releaseDocPreview();
     if (result_)
     {
         const QFileInfo output(document.outputPath);
@@ -258,10 +302,15 @@ void ConversionWindow::restoreDocument(const DocumentItem &document)
         sandbox_->finishRestoration(document, QStringLiteral("原任务的文档已无法读取"));
         return;
     }
+    const bool deferred =
+        document.kind == "word" &&
+        QFileInfo(document.inputPath).suffix().compare("doc", Qt::CaseInsensitive) == 0;
+    restoringWord_ = deferred;
     showDocument(document);
     functionBar_->fileMenu()->setPreviewMode(true);
     refreshBusyState();
-    sandbox_->finishRestoration(document);
+    if (!deferred)
+        sandbox_->finishRestoration(document);
 }
 
 void ConversionWindow::refreshScrollSync()

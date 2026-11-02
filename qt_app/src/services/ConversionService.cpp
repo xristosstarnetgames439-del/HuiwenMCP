@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
+#include <QTemporaryDir>
 #include <QtConcurrent>
 #include <exception>
 #ifdef Q_OS_OPENHARMONY
@@ -84,4 +85,54 @@ void ConversionService::convertPdfToMd(const QString &inputPath, const QString &
                 return {2001, QStringLiteral("转化失败：转换服务暂不可用，请重新转化；若仍失败，请重启应用。"), {}};
             }
         }));
+}
+
+void ConversionService::releaseDocPreview()
+{
+    wordDirectory_.reset();
+}
+
+void ConversionService::convertDocToDocx(const QString &inputPath)
+{
+    if (watcher_.isRunning())
+        return;
+    // 在当前沙箱任务内生成临时副本；后台任务持有目录，关窗也不会提前删除正在写的文件。
+    wordDirectory_ = std::make_shared<QTemporaryDir>(QFileInfo(inputPath).absolutePath() +
+                                                     QStringLiteral("/.word-preview-XXXXXX"));
+    const auto directory = wordDirectory_;
+    watcher_.setFuture(QtConcurrent::run([inputPath, directory]() -> ConversionResult {
+        try
+        {
+            if (!directory->isValid())
+                return {2001, QStringLiteral("无法创建 DOC 预览临时目录"), {}};
+            const QString outputPath = directory->filePath(QStringLiteral("preview.docx"));
+#ifdef Q_OS_OPENHARMONY
+            RunDocConversion(inputPath.toStdString(), outputPath.toStdString());
+#else
+            const QString script = qEnvironmentVariable("HUIWEN_DOC_CONVERT_SCRIPT");
+            if (script.isEmpty())
+                return {2001,
+                        QStringLiteral("桌面调试请设置 HUIWEN_DOC_CONVERT_SCRIPT 为 "
+                                       "word2docx/convert.py 的绝对路径"),
+                        {}};
+            QProcess process;
+            process.start(qEnvironmentVariable("HUIWEN_PYTHON", "python3"),
+                          {"-B", script, inputPath, outputPath});
+            if (!process.waitForStarted())
+                return {2001, process.errorString(), {}};
+            process.waitForFinished(-1);
+            if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
+                return {2001, QString::fromUtf8(process.readAllStandardError()), {}};
+#endif
+            QFile output(outputPath);
+            if (!output.open(QIODevice::ReadOnly) || output.size() <= 0 ||
+                output.read(4) != QByteArray("PK\x03\x04", 4))
+                return {2002, QStringLiteral("DOC 转换未生成有效的 DOCX 文件"), {}};
+            return {0, QStringLiteral("DOC 转换完成"), outputPath};
+        }
+        catch (const std::exception &error)
+        {
+            return {2001, QStringLiteral("DOC 转换失败：") + QString::fromUtf8(error.what()), {}};
+        }
+    }));
 }

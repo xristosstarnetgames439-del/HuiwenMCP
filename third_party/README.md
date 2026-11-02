@@ -12,6 +12,7 @@ git submodule sync --recursive && git submodule update --init --recursive
 | `markitdown/` | `patches/` Python 兼容补丁及使用说明 | `source/`：MarkItDown fork |
 | `markdown/` | 页面入口、样式、滚动同步、`build.mjs`、检查脚本及工具锁文件 | `source/`：汇总维护的 MD 核心模块 |
 | `word/` | 库入口、`build.mjs`、检查脚本及依赖锁文件 | `source/`：PortOne fork |
+| `doc2docx/` | 使用说明；转换适配在 `converter/`，HNP 打包在 `packaging/ohos/` | `source/`：DOC→DOCX 纯 Python 核心 fork |
 | `qt/` | SDK 准备脚本与使用说明 | 固定预编译 SDK，不新增内核源码仓库 |
 | `cef/` | 当前 HAR／桥接模块、准备脚本与说明 | 当前固定 `.so`／SDK，不迁移 Chromium 内核 |
 | `prebuilt/` | 固定 Qt／CEF 包的清单、校验、恢复和制包脚本 | 原有 Release 固定包 |

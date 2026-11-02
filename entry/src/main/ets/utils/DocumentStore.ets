@@ -33,7 +33,7 @@ export async function pickDocumentToSandbox(context: common.UIAbilityContext, ki
   const options = new picker.DocumentSelectOptions();
   options.maxSelectNumber = 1;
   options.fileSuffixFilters = kind === DocumentKind.PDF ? ['PDF|.pdf'] :
-    kind === DocumentKind.Word ? [mode === DocumentMode.Preview ? 'Word|.docx' : 'Word|.doc,.docx'] :
+    kind === DocumentKind.Word ? ['Word|.doc,.docx'] :
       ['Markdown|.md,.markdown'];
   options.defaultFilePathUri = 'file://docs/storage/Users/currentUser';
 
@@ -44,8 +44,8 @@ export async function pickDocumentToSandbox(context: common.UIAbilityContext, ki
 
   const uri = uris[0];
   const name = new fileUri.FileUri(uri).name;
-  if (kind === DocumentKind.Word && mode === DocumentMode.Preview && !name.toLowerCase().endsWith('.docx')) {
-    throw new Error('Word 预览当前仅支持 .docx，请先将旧版 .doc 转存为 .docx');
+  if (kind === DocumentKind.Word && !name.toLowerCase().endsWith('.doc') && !name.toLowerCase().endsWith('.docx')) {
+    throw new Error('请选择 .doc 或 .docx 文件');
   }
   let source: fileIo.File;
   try {

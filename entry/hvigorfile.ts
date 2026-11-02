@@ -17,7 +17,8 @@ const prepareNativeDependenciesPlugin = {
           'third_party/pdfium/source/public/fpdfview.h',
           'third_party/markitdown/source/packages/markitdown/src/markitdown/__init__.py',
           'third_party/markdown/source/aliases.mjs',
-          'third_party/word/source/src/index.ts'
+          'third_party/word/source/src/index.ts',
+          'third_party/doc2docx/source/src/doc2docx/converter.py'
         ];
         const missing = sources.filter((name) => !fs.existsSync(path.join(projectRoot, name)));
         if (missing.length) {
@@ -66,6 +67,10 @@ const prepareMarkdownResourcesPlugin = {
           process.env.HOST_PYTHON ?? properties.match(/^\s*python\.host\.path\s*=\s*(.+)$/m)?.[1].trim() ?? 'python3';
         const python = pythonSetting.includes(path.sep) ? path.resolve(projectRoot, pythonSetting) : pythonSetting;
         // 业务 pyz 独立准备，源码变化不再触发环境 HNP 重打包。
+        execFileSync(python, [path.join(projectRoot, 'packaging/ohos/pack_word_hnp.py')], {
+          cwd: projectRoot,
+          stdio: 'inherit'
+        });
         execFileSync(python, [path.join(projectRoot, 'packaging/ohos/build_python_bundle.py')], {
           cwd: projectRoot,
           stdio: 'inherit'
@@ -145,6 +150,11 @@ const repackHapWithHnpPlugin = {
         if (!fs.existsSync(hnpFile) || fs.statSync(hnpFile).size === 0) {
           throw new Error('HNP 准备后未找到有效产物，停止 HAP 打包');
         }
+        const wordHnpEntry = 'hnp/arm64-v8a/huiwen_doc2docx.hnp';
+        const wordHnpFile = path.join(hnpRoot, 'arm64-v8a', 'huiwen_doc2docx.hnp');
+        if (!fs.existsSync(wordHnpFile) || fs.statSync(wordHnpFile).size === 0) {
+          throw new Error('缺少独立 DOC 转换 HNP，请重新执行 Run 的资源准备任务');
+        }
         console.info(`[HUIWEN_HNP] DONE file=${hnpFile} bytes=${fs.statSync(hnpFile).size}`);
 
         const args = [
@@ -181,6 +191,9 @@ const repackHapWithHnpPlugin = {
         const entries = execFileSync('unzip', ['-Z1', outPath], { encoding: 'utf8' }).split(/\r?\n/);
         if (!entries.includes(hnpEntry)) {
           throw new Error(`未签名 HAP 中缺少 ${hnpEntry}`);
+        }
+        if (!entries.includes(wordHnpEntry)) {
+          throw new Error(`未签名 HAP 中缺少 ${wordHnpEntry}`);
         }
         const pythonBundleEntry = 'resources/rawfile/python/huiwen_converter.pyz';
         if (!entries.includes(pythonBundleEntry)) {

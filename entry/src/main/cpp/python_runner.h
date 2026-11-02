@@ -22,5 +22,7 @@ struct PdfConversionResult
 PdfConversionResult RunPdfConversionResult(const std::string &inputPath, const std::string &outputPath);
 // 使用 HNP 解释器执行当前应用的业务包；成功返回可读取的 MD 输出路径。
 std::string RunPdfConversion(const std::string &inputPath, const std::string &outputPath);
+// 执行独立 DOC HNP 中的固定 pyz；不调用 CEF 或外部 Office 程序。
+std::string RunDocConversion(const std::string &inputPath, const std::string &outputPath);
 
 #endif

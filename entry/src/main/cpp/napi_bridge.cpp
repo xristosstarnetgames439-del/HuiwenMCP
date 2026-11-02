@@ -37,7 +37,8 @@ static void ExecutePython(napi_env env, void *data)
     auto *task = static_cast<PythonWork *>(data);
     try
     {
-        task->result = task->convert ? RunPdfConversion(task->inputPath, task->outputPath) : RunPythonSmoke();
+        task->result =
+            task->convert ? RunPdfConversion(task->inputPath, task->outputPath) : RunPythonSmoke();
     }
     catch (const std::exception &ex)
     {

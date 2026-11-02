@@ -42,5 +42,6 @@ class ConversionWindow : public QWidget
     DocumentItem document_;
     bool picking_ = false;
     bool converting_ = false;
+    bool restoringWord_ = false;
     bool retry_ = false;
 };

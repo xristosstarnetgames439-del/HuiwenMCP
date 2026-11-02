@@ -26,6 +26,16 @@ def check_hap(path: Path) -> None:
         assert {"EntryAbility", "QtWorkspaceAbility"} <= abilities
         assert {"package": "huiwen_python.hnp", "type": "private"} in module["hnpPackages"]
         assert len(hap.read("hnp/arm64-v8a/huiwen_python.hnp")) > 0
+        assert {"package": "huiwen_doc2docx.hnp", "type": "private"} in module["hnpPackages"]
+        with zipfile.ZipFile(io.BytesIO(hap.read("hnp/arm64-v8a/huiwen_doc2docx.hnp"))) as word:
+            assert word.testzip() is None, "DOC HNP 校验失败"
+            names = [name for name in word.namelist() if name.endswith("/share/huiwen/convert_word.pyz")]
+            assert len(names) == 1, "DOC HNP 缺少独立转换入口"
+            with zipfile.ZipFile(io.BytesIO(word.read(names[0]))) as code:
+                for name in ("__main__.py", "huiwen_converter/_word_adapter.py", "doc2docx/converter.py",
+                             "doc2docx/cfb/container.py", "licenses/doc2docx/LICENSE"):
+                    assert name in code.namelist(), f"DOC HNP 缺少转换核心：{name}"
+                assert "doc2docx/cli.py" not in code.namelist()
         with zipfile.ZipFile(io.BytesIO(hap.read("resources/rawfile/python/huiwen_converter.pyz"))) as bundle:
             assert bundle.testzip() is None, "Python 业务包校验失败"
             for name in ("__main__.py", "huiwen_converter/__init__.py", "markitdown/__init__.py",
@@ -36,7 +46,7 @@ def check_hap(path: Path) -> None:
             assert any(entry.startswith(prefix) and "LICENSE" in entry for entry in hap.namelist()), name
         for name in ("huiwen-word.js", "huiwen-word.css", "preview.html", "THIRD_PARTY_LICENSES.txt", "build.json"):
             assert len(hap.read(f"resources/rawfile/word/{name}")) > 0, f"Word 预览缺少资源：{name}"
-    print("HAP_CHECK_OK: 8 个 ARM64 原生库、两个 Ability、Python 环境 HNP、业务 pyz、Word 资源与许可材料")
+    print("HAP_CHECK_OK: 8 个 ARM64 原生库、两个 Ability、Python／DOC 转换 HNP、业务 pyz、Word 资源与许可材料")
 
 
 if __name__ == "__main__":
