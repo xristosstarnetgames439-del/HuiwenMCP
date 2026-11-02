@@ -6,7 +6,7 @@ export struct RecentWorkspaceRow {
   @Prop workspace: RecentWorkspace;
   @Prop available: boolean = true;
   @State hoveredTask: string = '';
-  onOpen: (taskPath: string) => void = () => {};
+  onOpen: (workspace: RecentWorkspace) => void = () => {};
 
   private modeIcon(mode: string): Resource {
     if (mode === 'preview') {
@@ -83,7 +83,7 @@ export struct RecentWorkspaceRow {
     .accessibilityText(`${this.workspace.name}，${this.workspace.formatLabel}，${this.workspace.timeLabel}`)
     .onClick(() => {
       this.hoveredTask = '';
-      this.onOpen(this.workspace.taskPath);
+      this.onOpen(this.workspace);
     })
   }
 

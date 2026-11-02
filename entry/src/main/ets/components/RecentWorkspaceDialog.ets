@@ -51,7 +51,7 @@ export struct RecentWorkspaceDialog {
   private dataSource: WorkspaceDataSource = new WorkspaceDataSource();
   private active: boolean = false;
   onCloseRequested: () => void = () => {};
-  onOpen: (taskPath: string) => void = () => {};
+  onOpen: (workspace: RecentWorkspace) => void = () => {};
 
   aboutToAppear(): void {
     this.active = true;

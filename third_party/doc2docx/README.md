@@ -43,10 +43,12 @@ git submodule sync --recursive && git submodule update --init --recursive
 | 展示正文 | Qt 读取 DOCX 字节，经 CEF 页面交给 PortOne 的 `readOnly` 模式显示 | [WordPreviewWidget.h](../../qt_app/src/documentView/renderers/word/WordPreviewWidget.h)、[CefDocumentPreviewWidget.cpp](../../qt_app/src/documentView/renderers/web/CefDocumentPreviewWidget.cpp)、[Word 页面入口](../word/library.ts)、[PortOne 核心](../word/source/) |
 | 成功／失败收尾 | 成功后替换加载提示；失败后解除忙碌状态并显示错误；恢复任务等待转换结果后回执 | [ConversionWindow.cpp](../../qt_app/src/workspace/ConversionWindow.cpp) |
 | 清理临时副本 | `releaseDocPreview()` 释放目录；工作区销毁时释放服务持有的目录；后台任务持有自己的共享引用直到结束 | [ConversionService.cpp](../../qt_app/src/services/ConversionService.cpp)、[ConversionService.h](../../qt_app/src/services/ConversionService.h) |
-| 最近任务恢复 | 列出并校验原始 DOC／DOCX 任务；DOC 重开时重新转换，不依赖上次临时副本 | [RecentWorkspaceService.ets](../../entry/src/main/ets/services/RecentWorkspaceService.ets)、[SandboxStore.cpp](../../qt_app/src/sandbox/SandboxStore.cpp)、[ConversionWindow.cpp](../../qt_app/src/workspace/ConversionWindow.cpp) |
+| 最近任务恢复 | 首页使用列表的 `taskPath`／`mode`／`kind` 启动工作区，不提前调用 `loadTask()`；Qt Ability 统一读取并校验原始任务，窗口再次检查类型与可读性；DOC 重开时重新转换，不依赖上次临时副本 | [RecentWorkspaceService.ets](../../entry/src/main/ets/services/RecentWorkspaceService.ets)、[QtWorkspaceAbility.ets](../../entry/src/main/ets/entryability/QtWorkspaceAbility.ets)、[SandboxStore.cpp](../../qt_app/src/sandbox/SandboxStore.cpp)、[ConversionWindow.cpp](../../qt_app/src/workspace/ConversionWindow.cpp) |
 
 当前界面由 Qt 直接调用 `RunDocConversion()`；没有额外的 ArkTS DOC 转换桥接。
 Python 的稳定公开接口 `huiwen_converter.doc_to_docx()` 保留，供源码入口及自检使用。
+PDF／DOC 的结果 JSON 共用 `python_runner.cpp` 内的私有解析函数，检查字段、退出码和输出路径。
+PDF 保留返回错误码及拒绝纯空白消息的行为；DOC 保留抛出异常的行为，各自仍检查生成文件可读性。
 
 ## 文件位置与清理
 

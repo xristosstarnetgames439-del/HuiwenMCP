@@ -7,7 +7,7 @@ import { RecentWorkspaceDialog } from '../components/RecentWorkspaceDialog';
 import { HOME_FORMAT_DIALOG_WIDTH, HomeFeature, HomeFormatDialog } from '../components/HomeFormatDialog';
 import { getNativeStatus } from '../services/ConversionService';
 import {
-  listRecentWorkspaces, RecentWorkspace, validateRecentWorkspace, WORKSPACE_PAGE_SIZE
+  listRecentWorkspaces, RecentWorkspace, WORKSPACE_PAGE_SIZE
 } from '../services/RecentWorkspaceService';
 import { HomeMoreMenu, HOME_MENU_WIDTH, HOME_MENU_GAP } from '../components/HomeMoreMenu';
 import { HomeAboutDialog } from '../components/HomeAboutDialog';
@@ -112,8 +112,8 @@ struct HomePage {
     }
   }
 
-  private async openWorkspace(taskPath: string = '', mode: DocumentMode = DocumentMode.Convert,
-    kind: DocumentKind = DocumentKind.PDF): Promise<void> {
+  private async openWorkspace(taskPath: string = '', mode: string = DocumentMode.Convert,
+    kind: string = DocumentKind.PDF): Promise<void> {
     if (this.workspaceLaunching) {
       return;
     }
@@ -130,13 +130,6 @@ struct HomePage {
     }, 15000);
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      if (taskPath !== '') {
-        const document = await validateRecentWorkspace(context, taskPath);
-        // 最近任务的类型取自磁盘校验结果，预览按实际格式创建渲染器。
-        mode = document.mode === DocumentMode.Preview ? DocumentMode.Preview : DocumentMode.Convert;
-        kind = document.kind === DocumentKind.Word ? DocumentKind.Word :
-          document.kind === DocumentKind.Markdown ? DocumentKind.Markdown : DocumentKind.PDF;
-      }
       if (!this.homeVisible || !this.workspaceLaunching || launchVersion !== this.launchVersion) {
         return;
       }
@@ -175,7 +168,8 @@ struct HomePage {
         onCloseRequested: () => {
           this.closeHomeDialog();
         },
-        onOpen: (taskPath: string) => this.openWorkspace(taskPath)
+        onOpen: (workspace: RecentWorkspace) =>
+          this.openWorkspace(workspace.taskPath, workspace.mode, workspace.kind)
       })
     } else {
       HomeFormatDialog({
@@ -498,7 +492,8 @@ struct HomePage {
           loading: this.recentLoading,
           error: this.recentError,
           available: !this.workspaceLaunching && !this.homeDialogOpening && this.homeDialogId < 0,
-          onOpen: (taskPath: string) => this.openWorkspace(taskPath),
+          onOpen: (workspace: RecentWorkspace) =>
+            this.openWorkspace(workspace.taskPath, workspace.mode, workspace.kind),
           onViewAll: () => this.selectFeature(HomeFeature.Workspaces)
         })
         .margin({ top: 70 })

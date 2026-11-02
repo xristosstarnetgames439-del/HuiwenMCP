@@ -1,6 +1,6 @@
 // 最近任务只读取沙箱目录；首页默认三条，全部工作区按十条分页，不创建索引。
 import { common } from '@kit.AbilityKit';
-import nativeBridge, { HarmonySandboxDocument } from 'libhuiwen_native.so';
+import { HarmonySandboxDocument } from 'libhuiwen_native.so';
 import { getRecentDocuments } from '../utils/DocumentStore';
 
 export const DEFAULT_RECENT_WORKSPACE_LIMIT: number = 3;
@@ -10,6 +10,7 @@ export interface RecentWorkspace {
   taskPath: string;
   name: string;
   mode: string;
+  kind: string;
   formatLabel: string;
   timeLabel: string;
   canOpen: boolean;
@@ -42,6 +43,7 @@ export async function listRecentWorkspaces(context: common.UIAbilityContext,
       taskPath: document.taskPath,
       name: document.name,
       mode: document.mode,
+      kind: document.kind,
       formatLabel: formatLabel(document),
       timeLabel: formatTime(document.lastUsedAt),
       // DOC 恢复后由工作区静默转换；渲染器仍只接收 DOCX。
@@ -51,10 +53,4 @@ export async function listRecentWorkspaces(context: common.UIAbilityContext,
             document.name.toLowerCase().endsWith('.docx')))))
     };
   });
-}
-
-// 拉起 Qt 前先筛出失效任务；Qt Ability 仍会再次校验，避免使用页面缓存的路径。
-export function validateRecentWorkspace(context: common.UIAbilityContext,
-  taskPath: string): Promise<HarmonySandboxDocument> {
-  return nativeBridge.harmonyLoadTask(context.getApplicationContext().filesDir, taskPath);
 }

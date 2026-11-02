@@ -252,6 +252,23 @@ std::string RunPythonScript(bool convert, const std::vector<std::string> &paths,
     }
     return output;
 }
+QJsonObject ParseConversionResult(const std::string &line, const std::string &outputPath,
+                                  int exitCode)
+{
+    QJsonParseError error;
+    const auto document = QJsonDocument::fromJson(
+        QByteArray::fromStdString(line.substr(sizeof(kResultPrefix) - 1)), &error);
+    const auto result = document.object();
+    const auto code = result.value("code");
+    const auto path = result.value("outputPath").toString();
+    if (error.error != QJsonParseError::NoError || !document.isObject() || !code.isDouble() ||
+        code.toDouble() != code.toInt(-1) || code.toInt(-1) < 0 ||
+        result.value("message").toString().isEmpty() || !result.value("outputPath").isString() ||
+        (code.toInt() == 0) != (exitCode == 0) ||
+        (code.toInt() == 0 ? path.toStdString() != outputPath : !path.isEmpty()))
+        return {};
+    return result;
+}
 } // namespace
 
 // 首页和 Qt Ability 都注册自己的应用资源；按内容命名，旧任务不会被新包覆盖。
@@ -333,21 +350,14 @@ PdfConversionResult RunPdfConversionResult(const std::string &inputPath, const s
         RunPythonScript(true, {inputPath, outputPath}, "HUIWEN_CONVERT_OK", "PDF 转换", &exitCode);
     if (output.compare(0, sizeof(kResultPrefix) - 1, kResultPrefix) != 0)
         return {2001, "转化失败：转换进程未返回结果，请重新转化。", {}};
-    QJsonParseError parseError;
-    const auto document = QJsonDocument::fromJson(
-        QByteArray::fromStdString(output.substr(sizeof(kResultPrefix) - 1)), &parseError);
-    const auto result = document.object();
-    const auto code = result.value("code");
+    const auto result = ParseConversionResult(output, outputPath, exitCode);
     const auto message = result.value("message").toString();
-    const auto path = result.value("outputPath").toString();
-    if (parseError.error != QJsonParseError::NoError || !document.isObject() || !code.isDouble() ||
-        code.toDouble() != code.toInt(-1) || code.toInt(-1) < 0 || message.trimmed().isEmpty() ||
-        !result.value("outputPath").isString() || (code.toInt() == 0) != (exitCode == 0) ||
-        (code.toInt() == 0 ? path.toStdString() != outputPath : !path.isEmpty()))
+    if (result.isEmpty() || message.trimmed().isEmpty())
         return {2001, "转化失败：转换结果异常，请重新转化。", {}};
-    if (code.toInt() == 0 && access(outputPath.c_str(), R_OK) != 0)
+    const int code = result.value("code").toInt();
+    if (code == 0 && access(outputPath.c_str(), R_OK) != 0)
         return {2002, "转化失败：生成的 Markdown 无法读取，请重新转化。", {}};
-    return {code.toInt(), message.toStdString(), path.toStdString()};
+    return {code, message.toStdString(), result.value("outputPath").toString().toStdString()};
 }
 
 std::string RunPdfConversion(const std::string &inputPath, const std::string &outputPath)
@@ -383,20 +393,11 @@ std::string RunDocConversion(const std::string &inputPath, const std::string &ou
                                       "HUIWEN_CONVERT_RESULT", "DOC 转换", &exitCode, script);
     if (line.compare(0, sizeof(kResultPrefix) - 1, kResultPrefix) != 0)
         throw std::runtime_error("DOC 转换进程未返回结果");
-    QJsonParseError error;
-    const auto document = QJsonDocument::fromJson(
-        QByteArray::fromStdString(line.substr(sizeof(kResultPrefix) - 1)), &error);
-    const auto result = document.object();
-    const auto code = result.value("code");
-    const auto path = result.value("outputPath").toString();
-    const auto message = result.value("message").toString();
-    if (error.error != QJsonParseError::NoError || !document.isObject() || !code.isDouble() ||
-        code.toDouble() != code.toInt(-1) || code.toInt(-1) < 0 || message.isEmpty() ||
-        !result.value("outputPath").isString() || (code.toInt() == 0) != (exitCode == 0) ||
-        (code.toInt() == 0 ? path.toStdString() != outputPath : !path.isEmpty()))
+    const auto result = ParseConversionResult(line, outputPath, exitCode);
+    if (result.isEmpty())
         throw std::runtime_error("DOC 转换结果协议异常");
-    if (code.toInt() != 0)
-        throw std::runtime_error(message.toStdString());
+    if (result.value("code").toInt() != 0)
+        throw std::runtime_error(result.value("message").toString().toStdString());
     if (access(outputPath.c_str(), R_OK) != 0)
         throw std::runtime_error("生成的 DOCX 无法读取");
     return outputPath;

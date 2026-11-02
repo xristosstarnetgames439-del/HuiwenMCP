@@ -327,7 +327,7 @@ files/
 - `RecentWorkspaceService.listRecentWorkspaces(context, limit = DEFAULT_RECENT_WORKSPACE_LIMIT)` 默认取三条，数量常量为 `3`，底层仍支持 1–100。扫描 `preview/edit/convert` 三类任务，按目录修改时间降序排列，不创建 JSON、数据库或新任务目录。
 - 每行高度为 48vp，模式图标底框 28vp、内部 SVG 18vp；文件名、格式、时间字号分别为 14、12、11，加载、空列表及失败提示为 12。格式列为 104vp、时间列为 152vp，格式与时间间隔 8vp。文件名使用 `layoutWeight(1)` 占满剩余宽度，单行中部省略，鼠标悬停显示全名；固定列不参与收缩。时间显示设备本地 `yyyy-MM-dd HH:mm`，使用灰色文字。
 - 仅记录区域使用 `Scroll`，标题不进入滚动容器；列表高度按条数计算并以 `maxListHeight` 限制，默认最大 240vp，可由调用方传参调整。默认三条时高度为 160vp，单条为 48vp，不补空行；更多记录超过最大高度后在内部滚动。
-- 行点击直接通过 Want 的 `huiwenTaskPath` 传任务标识，跳过格式弹窗和选择器。首页先检查任务，Qt Ability 再经异步 `harmonyLoadTask(filesDir, taskPath)` 调用 `SandboxStore::loadTask()` 校验；只允许已接入的 PDF→MD，重新读取原输入和预定输出路径，不信任页面缓存的文件路径。其他模式显示对应图标和标签，但暂不开放恢复。
+- 行点击传递最近列表中的 `taskPath`、`mode` 和 `kind`，首页据此填入 Want 参数并启动对应工作区，跳过格式弹窗和选择器，不再提前读取任务。Qt Ability 统一经一次异步 `harmonyLoadTask(filesDir, taskPath)` 调用 `SandboxStore::loadTask()` 做最终磁盘校验，支持 PDF／MD／Word 预览及 PDF→MD；实际输入输出路径从磁盘重读，不使用页面缓存的文件路径。列表元数据已失效或与磁盘类型不符时拒绝恢复，窗口侧仍保留类型和可读性检查。
 - `SandboxService::restorationRequested()` 通知 `ConversionWindow::restoreDocument()`；窗口正在选择或转换时拒绝替换，原 PDF 失效时也不覆盖当前任务。恢复时切到预览，加载原 PDF 和非空的已有 MD，并隐藏转化按钮；MD 不存在或为空时继续显示等待提示并保留按钮，不自动重新转换。
 - Qt 载入后调用 `SandboxService::finishRestoration()` 更新时间，通过 `restoreResult` 回执通知 Qt Ability，成功后才发出首页关闭通知。读取列表、恢复前校验及恢复失败不更新时间；目录名的创建时间不变。新启动及 `onNewWant` 复用窗口都走同一恢复链。日志前缀为 `HUIWEN_QT_RESTORE_OK` / `HUIWEN_QT_RESTORE_FAILED`；系统实际交接与显示仍需真机验收。
 - 首页查询和恢复前校验可能先于 `QApplication` 执行；任务命名校验使用字符检查，PDF 预读使用 C++ 标准文件流，避免在 NAPI 工作线程通过 `QFile`（`QObject`）或正则 JIT 提前初始化 Qt 线程数据，导致工作区鼠标事件触发主线程断言。

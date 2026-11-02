@@ -11,7 +11,7 @@ export struct RecentWorkspaceList {
   @Prop maxListHeight: number = 240;
   private readonly rowHeight: number = 48;
   private readonly rowSpacing: number = 8;
-  onOpen: (taskPath: string) => void = () => {};
+  onOpen: (workspace: RecentWorkspace) => void = () => {};
   onViewAll: () => void = () => {};
 
   build() {
