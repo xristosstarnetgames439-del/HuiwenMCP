@@ -105,6 +105,11 @@ async function main() {
   }
   const inputs = Object.keys(result.metafile.inputs).sort();
   assets.set('THIRD_PARTY_LICENSES.txt', Buffer.from(collectLicenses(inputs)));
+  const page = readFileSync(path.join(directory, 'preview.html'), 'utf8')
+    .replace('/* HUIWEN_WORD_STYLE */', () => Buffer.from(assets.get('huiwen-word.css')).toString('utf8'))
+    .replace('/* HUIWEN_WORD_SCRIPT */', () => Buffer.from(assets.get('huiwen-word.js')).toString('utf8')
+      .replace(/<\/script/gi, '<\\/script'));
+  assets.set('preview.html', Buffer.from(page));
   const metadata = {
     format: 'iife', global: 'HuiwenWord', target: 'chrome114',
     source: 'third_party/word/source', version: readJson(path.join(source, 'package.json')).version,

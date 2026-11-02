@@ -118,7 +118,8 @@ int main(int argc, char *argv[])
                     }
                     require(rejected, "空 PDF 应拒绝恢复");
                     // 预览复用同一恢复入口，直接读取任务根目录，不创建 input/output。
-                    for (const std::string &suffix : {std::string("pdf"), std::string("md")})
+                    for (const std::string &suffix :
+                         {std::string("pdf"), std::string("md"), std::string("docx")})
                     {
                         const auto preview = root / "preview" / ("20261030_153000_" + suffix);
                         fs::create_directories(preview);
@@ -128,7 +129,9 @@ int main(int argc, char *argv[])
                         const QString path = QString::fromStdString(preview.u8string());
                         const auto previewTime = fs::last_write_time(preview);
                         const auto item = SandboxStore::loadTask(filesDir, path);
-                        require(item.mode == "preview" && item.kind.toStdString() == suffix &&
+                        require(item.mode == "preview" &&
+                                    item.kind.toStdString() ==
+                                        (suffix == "docx" ? "word" : suffix) &&
                                     item.inputPath.toStdString() == file.u8string() &&
                                     item.outputPath.isEmpty(),
                                 "预览任务应恢复正确格式和原始文件");
@@ -150,6 +153,21 @@ int main(int argc, char *argv[])
                         }
                         require(missing, "已删除的预览文件应拒绝恢复");
                     }
+                    const auto legacyWord = root / "preview" / "20261102_120000_legacy";
+                    fs::create_directories(legacyWord);
+                    const auto legacyFile = legacyWord / "document.doc";
+                    std::ofstream(legacyFile, std::ios::binary) << "legacy doc";
+                    bool unsupported = false;
+                    try
+                    {
+                        SandboxStore::loadTask(filesDir,
+                                               QString::fromStdString(legacyWord.u8string()));
+                    }
+                    catch (const std::exception &)
+                    {
+                        unsupported = true;
+                    }
+                    require(unsupported && fs::exists(legacyFile), "旧 DOC 应拒绝预览并保留归档");
                 }
                 catch (...)
                 {

@@ -23,7 +23,7 @@ try {
   assert.ok(existsSync(path.join(root, 'third_party/word/node_modules/.huiwen-install.sha256')),
     '先运行 third_party/word/build.mjs 准备锁定依赖');
   mkdirSync(path.join(sandbox, 'third_party/word/source'), { recursive: true });
-  for (const name of ['package.json', 'package-lock.json', 'library.ts', 'node_modules']) {
+  for (const name of ['package.json', 'package-lock.json', 'library.ts', 'preview.css', 'preview.html', 'node_modules']) {
     cpSync(path.join(root, 'third_party/word', name), path.join(directory, name), { recursive: true });
   }
   for (const name of ['src', 'package.json', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'tsconfig.json']) {
@@ -34,12 +34,15 @@ try {
   const first = run();
   assert.equal(first.status, 0, first.stdout + first.stderr);
   assert.match(first.stdout, /DEPENDENCIES cached/);
-  for (const name of ['huiwen-word.js', 'huiwen-word.css', 'THIRD_PARTY_LICENSES.txt', 'build.json']) {
+  for (const name of ['huiwen-word.js', 'huiwen-word.css', 'preview.html', 'THIRD_PARTY_LICENSES.txt', 'build.json']) {
     assert.ok(readOutput(name).length > 0);
   }
   const metadata = JSON.parse(readOutput('build.json'));
   assert.equal(metadata.target, 'chrome114');
-  assert.ok(Object.keys(metadata.inputs).some((name) => name.includes('portone-docx/src/DocxEditor.tsx')));
+  assert.ok(Object.keys(metadata.inputs).some((name) => name.includes('source/src/DocxEditor.tsx')));
+  assert.match(readOutput('preview.html'), /word-body/);
+  assert.match(readOutput('preview.html'), /window.HuiwenPreview = window.HuiwenWord/);
+  assert.doesNotMatch(readOutput('preview.html'), /HUIWEN_WORD_(STYLE|SCRIPT)/);
   assert.match(readOutput('THIRD_PARTY_LICENSES.txt'), /Apache License/);
   assert.match(readOutput('THIRD_PARTY_LICENSES.txt'), /react@18\.3\.1/);
   assert.match(readOutput('THIRD_PARTY_LICENSES.txt'), /prosemirror-view@/);
@@ -51,6 +54,8 @@ try {
   assert.equal(typeof api.createRoot, 'function');
   assert.equal(typeof api.core.importDocx, 'function');
   assert.equal(typeof api.core.exportDocx, 'function');
+  assert.equal(typeof api.showPreview, 'function');
+  assert.equal(typeof api.scrollPosition, 'function');
   const before = statSync(path.join(output, 'huiwen-word.js')).mtimeMs;
   const second = run();
   assert.equal(second.status, 0, second.stdout + second.stderr);

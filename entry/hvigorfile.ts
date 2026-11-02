@@ -186,7 +186,7 @@ const repackHapWithHnpPlugin = {
         if (!entries.includes(pythonBundleEntry)) {
           throw new Error(`未签名 HAP 中缺少 ${pythonBundleEntry}`);
         }
-        for (const name of ['huiwen-word.js', 'huiwen-word.css', 'THIRD_PARTY_LICENSES.txt', 'build.json']) {
+        for (const name of ['huiwen-word.js', 'huiwen-word.css', 'preview.html', 'THIRD_PARTY_LICENSES.txt', 'build.json']) {
           const resource = `resources/rawfile/word/${name}`;
           if (!entries.includes(resource)) {
             throw new Error(`未签名 HAP 中缺少 ${resource}`);

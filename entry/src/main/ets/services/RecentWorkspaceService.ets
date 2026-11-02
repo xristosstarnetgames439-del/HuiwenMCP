@@ -44,9 +44,10 @@ export async function listRecentWorkspaces(context: common.UIAbilityContext,
       mode: document.mode,
       formatLabel: formatLabel(document),
       timeLabel: formatTime(document.lastUsedAt),
-      // 预览和转化进入同一个 Qt 工作区；编辑及 Word 引擎尚未接入。
+      // Word 只开放 DOCX 只读预览，历史 DOC 归档仍保留但不进入渲染器。
       canOpen: (document.mode === 'convert' && document.kind === 'pdf') ||
-        (document.mode === 'preview' && (document.kind === 'pdf' || document.kind === 'md'))
+        (document.mode === 'preview' && (document.kind === 'pdf' || document.kind === 'md' ||
+          (document.kind === 'word' && document.name.toLowerCase().endsWith('.docx'))))
     };
   });
 }

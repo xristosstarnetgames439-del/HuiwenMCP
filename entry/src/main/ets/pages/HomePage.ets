@@ -132,9 +132,10 @@ struct HomePage {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       if (taskPath !== '') {
         const document = await validateRecentWorkspace(context, taskPath);
-        // 最近任务的类型取自磁盘校验结果，不能把 MD 预览误送到 PDF 转化布局。
+        // 最近任务的类型取自磁盘校验结果，预览按实际格式创建渲染器。
         mode = document.mode === DocumentMode.Preview ? DocumentMode.Preview : DocumentMode.Convert;
-        kind = document.kind === DocumentKind.Markdown ? DocumentKind.Markdown : DocumentKind.PDF;
+        kind = document.kind === DocumentKind.Word ? DocumentKind.Word :
+          document.kind === DocumentKind.Markdown ? DocumentKind.Markdown : DocumentKind.PDF;
       }
       if (!this.homeVisible || !this.workspaceLaunching || launchVersion !== this.launchVersion) {
         return;

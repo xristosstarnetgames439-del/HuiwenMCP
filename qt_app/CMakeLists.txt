@@ -11,10 +11,12 @@ set(workspace_sources
     main.cpp
     resources/file-icons.qrc
     resources/markdown.qrc
+    resources/word.qrc
     src/workspace/ConversionWindow.cpp
     src/documentView/DocumentView.cpp
     src/documentView/renderers/pdf/PdfPreviewWidget.cpp
     src/documentView/renderers/markdown/MarkdownPreviewWidget.cpp
+    src/documentView/renderers/web/CefDocumentPreviewWidget.cpp
     src/components/rendering/RasterRenderWindow.cpp
     src/components/rendering/RasterDocumentViewport.cpp
     src/components/scrolling/DocumentScrollController.cpp

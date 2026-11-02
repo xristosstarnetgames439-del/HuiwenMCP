@@ -34,7 +34,9 @@ def check_hap(path: Path) -> None:
         for name in ("qt", "pdfium"):
             prefix = f"resources/rawfile/third_party_licenses/{name}/"
             assert any(entry.startswith(prefix) and "LICENSE" in entry for entry in hap.namelist()), name
-    print("HAP_CHECK_OK: 8 个 ARM64 原生库、两个 Ability、Python 环境 HNP、业务 pyz 与许可材料")
+        for name in ("huiwen-word.js", "huiwen-word.css", "preview.html", "THIRD_PARTY_LICENSES.txt", "build.json"):
+            assert len(hap.read(f"resources/rawfile/word/{name}")) > 0, f"Word 预览缺少资源：{name}"
+    print("HAP_CHECK_OK: 8 个 ARM64 原生库、两个 Ability、Python 环境 HNP、业务 pyz、Word 资源与许可材料")
 
 
 if __name__ == "__main__":

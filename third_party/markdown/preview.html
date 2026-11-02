@@ -10,5 +10,14 @@
 <body>
   <main id="markdown-body" class="markdown-body"></main>
   <script>/* HUIWEN_PREVIEW_SCRIPT */</script>
+  <script>
+    window.HuiwenPreview = {
+      ...window.HuiwenMarkdown,
+      showPreview(source) {
+        window.HuiwenMarkdown.showPreview(source);
+        window.huiwenReportPreview?.(true, '');
+      }
+    };
+  </script>
 </body>
 </html>

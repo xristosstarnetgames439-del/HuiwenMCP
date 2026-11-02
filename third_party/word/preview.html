@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data: blob:; base-uri 'none'; form-action 'none'">
+  <title>Word 预览</title>
+  <style>/* HUIWEN_WORD_STYLE */</style>
+</head>
+<body>
+  <main id="word-body"></main>
+  <script>/* HUIWEN_WORD_SCRIPT */</script>
+  <script>
+    window.HuiwenPreview = window.HuiwenWord;
+    window.addEventListener('error', (event) => {
+      window.huiwenReportPreview?.(false, 'Word 预览失败：' + String(event.message).slice(0, 512));
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      const reason = event.reason;
+      window.huiwenReportPreview?.(false,
+        'Word 预览失败：' + String(reason?.message || reason).slice(0, 512));
+    });
+  </script>
+</body>
+</html>

@@ -185,7 +185,8 @@ export default class QtWorkspaceAbility extends UIAbility {
         if (event.mode !== this.mode || event.kind !== this.kind) {
           throw new Error('选取请求与当前工作区类型不一致');
         }
-        const kind = this.kind === DocumentKind.Markdown ? DocumentKind.Markdown : DocumentKind.PDF;
+        const kind = this.kind === DocumentKind.Word ? DocumentKind.Word :
+          this.kind === DocumentKind.Markdown ? DocumentKind.Markdown : DocumentKind.PDF;
         const mode = this.mode === DocumentMode.Preview ? DocumentMode.Preview : DocumentMode.Convert;
         const document = await pickDocumentToSandbox(this.context, kind, mode);
         if (document !== null) {

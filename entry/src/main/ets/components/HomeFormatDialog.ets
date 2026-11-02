@@ -34,9 +34,9 @@ export struct HomeFormatDialog {
     }
     .padding(12)
     .justifyContent(FlexAlign.Center)
-    // 预览复用同一个工作区；Word 和编辑仍只保留格式展示。
+    // 三种只读预览复用同一个工作区；编辑仍只保留格式展示。
     .onClick(() => {
-      if (this.feature === HomeFeature.Preview && kind !== DocumentKind.Word) {
+      if (this.feature === HomeFeature.Preview) {
         this.onPreviewRequested(kind);
       }
     })

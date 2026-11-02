@@ -1,0 +1,23 @@
+html, body, #word-body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #f5f7fb;
+}
+
+#word-body .docx-editor-frame {
+  --docx-editor-border: none;
+  --docx-editor-radius: 0;
+}
+
+#word-body .docx-editor-editor {
+  background: #f5f7fb;
+}
+
+.word-preview-error {
+  margin: 0;
+  padding: 32px;
+  color: #9c2c2c;
+  font: 14px/1.6 system-ui, sans-serif;
+}

@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/word">
+    <file alias="preview.html">../../entry/src/main/resources/rawfile/word/preview.html</file>
+  </qresource>
+</RCC>

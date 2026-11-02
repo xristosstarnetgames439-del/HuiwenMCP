@@ -5,8 +5,8 @@
 #include <QTimer>
 #include <QWindow>
 #ifdef Q_OS_OPENHARMONY
+#include "documentView/renderers/web/CefDocumentPreviewWidget.h"
 #include "platform/harmony/qt_bridge.h"
-#include "documentView/renderers/markdown/MarkdownPreviewWidget.h"
 #include <QPointer>
 #include <memory>
 #endif
@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
                          window->hide(); // 隐藏会停止预览定时器，关闭期间不再创建浏览器。
                          QPointer<ConversionWindow> closingWindow(window.get());
                          const auto id = workspaceId;
-                         MarkdownPreviewWidget::closeWorkspaceBrowsers(
+                         CefDocumentPreviewWidget::closeWorkspaceBrowsers(
                              [closingWindow, id]
                              {
                                  if (closingWindow && id == QtBridge::workspaceId())

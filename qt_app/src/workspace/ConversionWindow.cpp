@@ -7,6 +7,7 @@
 #include "documentView/DocumentView.h"
 #include "documentView/renderers/markdown/MarkdownPreviewWidget.h"
 #include "documentView/renderers/pdf/PdfPreviewWidget.h"
+#include "documentView/renderers/word/WordPreviewWidget.h"
 #include "sandbox/SandboxService.h"
 #include "services/ConversionService.h"
 #include <QCloseEvent>
@@ -25,7 +26,9 @@
 ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWidget *parent)
     : QWidget(parent), mode_(mode), kind_(kind), splitter_(new WorkspaceSplitter(this)),
       source_(
-          kind == "md"
+          kind == "word"
+              ? new DocumentView(new WordPreviewWidget, QStringLiteral("请选择 Word（DOCX）"), true)
+          : kind == "md"
               ? new DocumentView(new MarkdownPreviewWidget, QStringLiteral("请选择 Markdown"), true)
               : new DocumentView(new PdfPreviewWidget, QStringLiteral("请选择 PDF"), true)),
       functionBar_(new FunctionBar(mode, this)), sandbox_(new SandboxService(this)),
@@ -39,9 +42,11 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
         button_ = new ConvertButton(this);
         conversion_ = new ConversionService(this);
     }
-    setWindowTitle(
-        conversion ? QStringLiteral("汇文MCP · 转换工作区")
-                   : QStringLiteral("汇文MCP · %1 预览").arg(kind_ == "md" ? "Markdown" : "PDF"));
+    setWindowTitle(conversion ? QStringLiteral("汇文MCP · 转换工作区")
+                              : QStringLiteral("汇文MCP · %1 预览")
+                                    .arg(kind_ == "word" ? "Word"
+                                         : kind_ == "md" ? "Markdown"
+                                                         : "PDF"));
     setMinimumSize(640, 480);
     setAutoFillBackground(true);
     QPalette colors = palette();

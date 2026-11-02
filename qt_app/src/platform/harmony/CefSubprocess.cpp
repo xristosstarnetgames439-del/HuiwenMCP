@@ -18,6 +18,30 @@ __attribute__((visibility("default"))) void Write(int severity, const char *, in
 
 namespace
 {
+class PreviewReporter final : public CefV8Handler
+{
+  public:
+    bool Execute(const CefString &, CefRefPtr<CefV8Value>, const CefV8ValueList &arguments,
+                 CefRefPtr<CefV8Value> &retval, CefString &) override
+    {
+        if (arguments.size() != 2 || !arguments[0]->IsBool() || !arguments[1]->IsString())
+            return false;
+        const auto error = arguments[1]->GetStringValue().ToString();
+        const auto context = CefV8Context::GetCurrentContext();
+        if (error.size() > 4096 || !context || !context->GetFrame()->IsMain())
+            return false;
+        const auto message = CefProcessMessage::Create("Huiwen.PreviewState");
+        message->GetArgumentList()->SetBool(0, arguments[0]->GetBoolValue());
+        message->GetArgumentList()->SetString(1, error);
+        context->GetFrame()->SendProcessMessage(PID_BROWSER, message);
+        retval = CefV8Value::CreateUndefined();
+        return true;
+    }
+
+  private:
+    IMPLEMENT_REFCOUNTING(PreviewReporter);
+};
+
 class ScrollReporter final : public CefV8Handler
 {
   public:
@@ -61,9 +85,15 @@ class PreviewRenderApp final : public CefApp, public CefRenderProcessHandler
                           CefRefPtr<CefV8Context> context) override
     {
         if (frame->IsMain() && frame->GetURL().ToString().rfind("data:text/html;base64,", 0) == 0)
+        {
             context->GetGlobal()->SetValue(
                 "huiwenReportScroll", CefV8Value::CreateFunction("huiwenReportScroll", new ScrollReporter),
                 V8_PROPERTY_ATTRIBUTE_READONLY);
+            context->GetGlobal()->SetValue(
+                "huiwenReportPreview",
+                CefV8Value::CreateFunction("huiwenReportPreview", new PreviewReporter),
+                V8_PROPERTY_ATTRIBUTE_READONLY);
+        }
     }
 
   private:

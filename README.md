@@ -26,15 +26,15 @@ Qt／CEF 继续使用原来的固定预编译 SDK／`.so`，不新增内核源�
 
 ## 当前状态
 
-- 首页保持 ArkTS；银灰介绍区与主区域按约 30% / 70% 分配宽度，主区域提供文档预览、文档编辑、文档转化三个小正方形入口，普通字重的名称放在方块外下方。点击入口打开独立格式选择子窗口；预览和编辑仅展示 Word、PDF、MD 格式，转化窗口中的 PDF→MD 入口启动独立 Qt 工作区。
+- 首页保持 ArkTS；银灰介绍区与主区域按约 30% / 70% 分配宽度，主区域提供文档预览、文档编辑、文档转化三个小正方形入口，普通字重的名称放在方块外下方。点击入口打开独立格式选择子窗口；预览中的 Word（DOCX）、PDF、MD 入口打开单栏 Qt 工作区，编辑仍只展示格式；转化窗口中的 PDF→MD 入口打开双栏工作区。本次 DOCX 接入仅做格式和静态检查，尚未重新编译、打包或设备验收。
 - 左侧介绍区上下内边距为 50vp、左右为 32vp；标题置顶，两段介绍组成间隔 20vp 的底部内容组，外层通过 `SpaceBetween` 分布并保持左对齐。
 - 介绍区背景与黑色 ∞ 使用独立 SVG：银灰底图包含左上、右下的淡化文档及斜向柔光，∞ 的反光从中心向两侧连续衰减；底图等比例铺满，符号等比例居中，文字独立叠加，整体由 24vp 圆角裁切。本次素材与布局仅做静态检查和设计渲染，尚未编译、打包或设备验收。
-- 首页右侧入口改为顶部排列，下方“最近工作区”默认展示三条任务目录记录；当前可恢复 PDF→MD 转化任务，加载原 PDF 和已有 MD，并在 Qt 载入成功后更新任务目录最近使用时间。本次最近列表、恢复与时间更新仅做格式检查，尚未编译、打包或真机验收。
+- 首页右侧入口改为顶部排列，下方“最近工作区”默认展示三条任务目录记录；当前可恢复 PDF→MD 转化任务及 PDF／MD／DOCX 单栏预览任务，沿用原文件，并在工作区载入后更新任务目录最近使用时间。本次最近列表、恢复与时间更新仅做格式检查，尚未编译、打包或真机验收。
 - ArkTS 首页左侧有 60vp 半透明窄侧栏，底部 36vp 三横线 SVG 按钮可打开“关于、外观、截图、文件管理、设置”菜单。菜单通过实际布局坐标，让菜单底部与按钮底部对齐，菜单左边与按钮右边保持 8vp 间距；外观二级菜单提供浅色、深色、跟随系统，选择持久保存并应用于 ArkTS 首页和弹窗；Qt 工作区仍使用自身配色。关于弹窗读取实际应用版本号；截图、文件管理、设置本阶段只保留入口并提示暂未开放。首页内容背景与窗口容器分别设置透明，焦点态容器透明，非焦点态使用实色，右侧主内容保持不透明。
 - Qt 开发依赖保存在 `third_party/qt/`，运行库从 `entry/libs/arm64-v8a/` 链接并随 HAP 分发；PDFium fork 保存在 `third_party/pdfium/source/`，Qt 左侧输入区域已接入其公开 C API 实现正文预览；已完成鸿蒙编译、HAP 打包；系统目录跳转沿用原有实现。
 - DevEco Run 构建前执行 `PrepareNativeDependencies`，按当前 PDFium 源码增量生成 `libpdfium.so`；Qt/NAPI 的 C++ 编译后同步新库到 `libs`。没有保存源码自动构建、应用内动态替换库或保持进程状态的热重载。
 - Qt 工作区默认最大化并保留系统标题栏和窗口边框，输入、输出区域解耦；中部分割线可拖动，悬浮“转化”按钮随分隔线移动。
-- 两侧区域共用 `DocumentView : QStackedWidget`，分别注入 PDF 和 Markdown 渲染器；文件卡片、预览切换、忙碌状态与对外信号集中维护。PDF 继承公共 `RasterDocumentViewport`，复用独立绘图窗口、滚动条和惯性能力；CEF 保留浏览器自身滚动。Word 渲染器尚未接入。本次通用化重构仅完成格式检查，尚未编译、打包或设备验收。
+- 文档区域共用 `DocumentView : QStackedWidget`，由工作区注入 PDF、Markdown 或 Word 渲染器；文件卡片、预览切换、忙碌状态与对外信号集中维护。PDF 继承公共 `RasterDocumentViewport`，复用独立绘图窗口、滚动条和惯性能力；CEF 保留浏览器自身滚动。Word 通过 PortOne `readOnly` 模式显示 DOCX，与 MD 共用 `CefDocumentPreviewWidget` 的 CEF 生命周期和原生定位；编辑与保存尚未接入。本次通用化重构仅完成格式检查，尚未编译、打包或设备验收。
 - 输入文件卡片通过 DocumentStore 获取系统选取授权，再经 NAPI 调用 C++ harmony_sandbox 完成沙箱复制和路径安排。两侧操作统一到顶部“文件”菜单：查看模式默认预览，可切换为占位图；左侧由 PDFium 显示多页 PDF，右侧已有结果时由 CEF 显示 MD。转换成功自动切到预览并隐藏转化按钮；更换文件保留当前查看方式，清空旧结果并恢复按钮，取消选择保留原状态；尚未生成 MD 时仍显示等待提示。PDFium 后台串行渲染可见页，连续尺寸变化合并请求；位图缓存上限为 64 MiB，超长页面降低采样分辨率。Qt ConversionService 仍复用 PythonRunner 转换。本次默认预览及按钮显隐调整仅做格式检查，尚未编译、打包或真机验收。
 - 原有 Python HNP 自检与 PDF 转换已由用户在真机验证成功。新增 Qt 窗口交接、选择与结果位置操作需要真机验收。
 - 汇文 Python 包只公开 `pdf_to_md()`；后续格式在依赖和设备转换通过后再增加。
@@ -84,7 +84,7 @@ HuiWenMCP/
 │   ├── main.cpp                       默认最大化并保留系统边框，显示成功后通知结束原首页
 │   ├── resources/
 │   │   ├── branding/、file-icons/     应用图标及共用文件格式图标
-│   │   └── file-icons.qrc、markdown.qrc 图标与离线 Markdown 页面资源
+│   │   └── file-icons.qrc、markdown.qrc、word.qrc 图标与离线预览页面资源
 │   ├── tests/
 │   │   ├── CMakeLists.txt、pdf_preview_check.cpp 通用 View、PDF 加载与滚动检查
 │   │   └── sandbox_startup/           沙箱启动检查；检查程序均需单独构建运行
@@ -95,7 +95,9 @@ HuiWenMCP/
 │       │   ├── DocumentRenderer.h    渲染契约、滚动归属及可选能力配置
 │       │   └── renderers/
 │       │       ├── pdf/PdfPreviewWidget.h/.cpp PDFium、页面排版、后台渲染与缓存
-│       │       └── markdown/MarkdownPreviewWidget.h/.cpp 离线 MD 页面、CEF 画面与生命周期
+│       │       ├── markdown/MarkdownPreviewWidget.h/.cpp MD 渲染器入口
+│       │       ├── word/WordPreviewWidget.h    DOCX 只读渲染器入口
+│       │       └── web/CefDocumentPreviewWidget.h/.cpp MD／Word 共用 CEF 承载
 │       ├── components/
 │       │   ├── FileCard.h/.cpp         共用文件占位卡片，图标与名称由调用方传入
 │       │   ├── ConvertButton.h/.cpp    独立悬浮转化按钮
@@ -184,7 +186,7 @@ QPA 在进程内只启动一次 Qt 主循环，CEF 引擎也保留到应用退�
 - `sandbox/SandboxStore.h/.cpp` 是 Qt Core 通用实现，负责 `preview`、`edit`、`convert` 三类目录、任务命名、最近记录、编辑缓存查询和目录归属校验，不引入 JSON、数据库或额外索引文件。鸿蒙把它编入 `libhuiwen_native.so`，Qt 工作区链接复用；桌面直接编译此实现。
 - `SandboxService` 仍是 Qt 界面入口；鸿蒙通过 ArkTS Picker 获得授权，桌面使用 Qt 选择器。输入统一原子保存，失败只清理本次输入及空任务目录，不覆盖其他任务。
 - `platform/harmony/harmony_sandbox.h/.cpp` 负责鸿蒙 fd 复制；NAPI 同步复制授权 fd 并设置子进程不继承，在工作线程以独立偏移分块读取，成功、失败和排队失败都释放 fd。`harmony_sandbox_napi.cpp` 的目录扫描也在工作线程运行。
-- `harmonyImportDocument(filesDir, name, fd, kind, mode)` 返回 `Promise<HarmonySandboxDocument>`；`mode` 为 `preview`、`edit`、`convert`，取代原有布尔转换标记。支持 PDF、MD/Markdown、Word 导入归档；当前正式转换接口仍仅接 PDF→MD，归档支持 Word 不表示已经接入 Word 预览、编辑或转换。
+- `harmonyImportDocument(filesDir, name, fd, kind, mode)` 返回 `Promise<HarmonySandboxDocument>`；`mode` 为 `preview`、`edit`、`convert`，取代原有布尔转换标记。支持 PDF、MD/Markdown、Word 导入归档；当前正式转换接口仍仅接 PDF→MD，DOCX 已接入只读预览，旧版 DOC 仍仅支持归档；Word 编辑与转换尚未开放。
 - `harmonyValidateOutput(filesDir, path)` 接受新任务的 `convert|edit/<任务>/output/*.md`，兼容历史 `outputs/` 下的文件；仍检查真实路径、目录归属及非空可读 MD。历史数据保留原位，不批量迁移。
 - `harmonyValidateTaskDirectory(filesDir, path)` 直接复用 `SandboxStore::validateTaskDirectory()`，只接受真实可读且不含符号链接或路径别名的 `edit|convert/<任务>/input|output` 目录。与 MD 文件校验分开，因此选取 PDF 后即可请求打开空输出目录；鸿蒙经 `openDirectory` 工作区事件调用系统文件管理器，桌面使用 `QDesktopServices`。
 
@@ -224,10 +226,10 @@ QPA 在进程内只启动一次 Qt 主循环，CEF 引擎也保留到应用退�
 - **工作区**：`ConversionWindow` 组装 `FunctionBar`、`WorkspaceSplitter` 和状态提示。`ConvertButton` 是主窗口的直接子控件，图中只标出悬浮位置；它不占分栏布局空间，按需显示并位于正文和分隔条之上。
 - **共用区域**：两侧都是 `DocumentView : QStackedWidget`，本身就是页面切换容器，不再额外包一层业务 QWidget。工作区分别注入 PDF 和 Markdown 渲染器，并接收文件卡片、打开完成与滚动信号；两侧不互相调用。
 - **PDF 预览**：`PdfPreviewWidget` 继承 `RasterDocumentViewport`，两者是同一个控件，不是父子包裹的两层。其 `viewport` 内的 `createWindowContainer()` 嵌入 `RasterRenderWindow`，后者使用独立 `QBackingStore` 绘制。图中 `▐` 是位于正文视口外侧的 `DocumentScrollBar`。
-- **Markdown 预览**：`MarkdownPreviewWidget` 是 Qt 中的占位及控制控件。CEF 的实际原生父窗口是 `ConversionWindow` 对应的 Qt 顶层窗口，按占位区域映射位置与尺寸，并使用自己的 Surface；它不是普通 QWidget 子画布。
+- **Markdown 预览**：`MarkdownPreviewWidget` 与 `WordPreviewWidget` 继承共用 `CefDocumentPreviewWidget`，各自仍是一个 Qt 占位及控制控件。CEF 的实际原生父窗口是 `ConversionWindow` 对应的 Qt 顶层窗口，按占位区域映射位置与尺寸，并使用自己的 Surface；它不是普通 QWidget 子画布。
 - **非可视能力**：`DocumentRenderer` 是 C++ 渲染接口；`DocumentScrollController` 是 Qt 滚动能力对象；`QBackingStore` 和页面缓存是内部数据／绘图对象。这些都不构成额外可视壳层。
 - **能力配置**：`DocumentView::setViewOptions()` 接收 `DocumentViewOptions`，默认启用 `inertiaEnabled` 和 `scrollBarVisible`。前者只控制 Qt 侧追加的惯性；CEF 保留引擎自身的手势处理，只映射滚动条显隐。`scrollOwner()` 区分 View 管理滚动与 Backend 管理滚动，不在 CEF 外再加 Qt 滚动区域。
-- **复用边界**：卡片与预览切换不依赖输入／输出角色。后续 Word 渲染器可实现同一契约后注入；Word 引擎尚未接入，卡片的 `kind` 参数只选择图标，不会自动创建对应格式的渲染器。
+- **复用边界**：卡片与预览切换不依赖输入／输出角色。工作区按 `kind` 注入 PDF、MD 或 Word 渲染器，卡片本身仍只显示图标和文件状态；Word 单栏只读预览沿用同一契约，不创建 PDF／MD 转换结果区。
 - **画面隔离与通信**：PDF 和 MD 正文分别使用独立画面缓冲。此前独立 PDF 缓冲方案获得用户真机无拖动残影的反馈，本次重构仍需重新验收；这也不代表模拟器 CEF GPU 崩溃已解决。QPA 负责窗口、绘制和输入适配，NAPI／`QtBridge` 负责文件选择、任务恢复与返回首页等业务消息。
 
 切到占位图模式或尚无文件时，`DocumentView` 显示另一页；两页互斥显示，卡片的滚动区域不会包在 PDF 或 CEF 正文外侧：
@@ -448,7 +450,7 @@ hvigorw assembleHap --mode module -p product=default -p module=entry@default
 
 - 窗口大小和窄侧栏保持原有设置。除侧栏、外边距及分区间距外，介绍区与主区域使用 `layoutWeight(3)` / `layoutWeight(7)` 分配宽度，主区域取消固定 360vp 宽度。
 - “开始使用”下三个入口保持等宽列布局，浅灰正方形边长为所在列宽的 50%，即上一版方块边长的一半；方块内只放居中的 SVG，文档预览、文档编辑、文档转化名称以普通字重显示在方块外下方。`HomeFeatureCard` 只负责显示和点击事件，`HomePage` 保存当前功能选项。
-- 点击入口后，按 `docs/自定义弹窗模版.md` 使用 `getUIContext().getPromptAction().openCustomDialog()` 打开居中的独立格式选择子窗口，采用 `showInSubWindow: true`、`isModal: false` 的组合（该接口禁止子窗口同时启用模态，也不支持 `CustomDialogController` 的 `customStyle` 参数）；首页保存返回的弹窗 ID，通过 `closeCustomDialog(id)` 统一关闭，并处理打开失败、外部取消及首页退出期间的异步清理。系统背板与内容组件 `HomeFormatDialog` 共用 `HOME_FORMAT_DIALOG_WIDTH = 360`，内外宽度统一固定为 360vp，不再使用 90% 限制；高度随内容。只由系统背板绘制浅灰背景、16vp 圆角和阴影，关闭背景模糊，内部保持透明，避免宽度不一致留下透明空白。三个弹窗共用内容布局，内容居中；左右及底部内边距为 24vp，顶部为 40vp，为右上角关闭按钮留位；格式选项自身内边距为 12vp，转换入口使用透明背景，不再额外叠加白底和边框。弹窗不在首页内展开或预留面板高度，右上角仅保留 28×28vp 关闭按钮，内含 18×18vp 的 × SVG，也可点击外部取消。预览和编辑窗口仅展示 Word、PDF、MD，暂不选择文件或跳转；转化窗口展示 PDF→MD 组合图标入口。点击该入口后由 `HomeFormatDialog.onConvertRequested` 通知首页，关闭子窗口成功后再启动现有 Qt 工作区，仍在 Qt 窗口就绪后结束首页 Ability。启动期间禁用重复操作，失败显示错误。
+- 点击入口后，按 `docs/自定义弹窗模版.md` 使用 `getUIContext().getPromptAction().openCustomDialog()` 打开居中的独立格式选择子窗口，采用 `showInSubWindow: true`、`isModal: false` 的组合（该接口禁止子窗口同时启用模态，也不支持 `CustomDialogController` 的 `customStyle` 参数）；首页保存返回的弹窗 ID，通过 `closeCustomDialog(id)` 统一关闭，并处理打开失败、外部取消及首页退出期间的异步清理。系统背板与内容组件 `HomeFormatDialog` 共用 `HOME_FORMAT_DIALOG_WIDTH = 360`，内外宽度统一固定为 360vp，不再使用 90% 限制；高度随内容。只由系统背板绘制浅灰背景、16vp 圆角和阴影，关闭背景模糊，内部保持透明，避免宽度不一致留下透明空白。三个弹窗共用内容布局，内容居中；左右及底部内边距为 24vp，顶部为 40vp，为右上角关闭按钮留位；格式选项自身内边距为 12vp，转换入口使用透明背景，不再额外叠加白底和边框。弹窗不在首页内展开或预留面板高度，右上角仅保留 28×28vp 关闭按钮，内含 18×18vp 的 × SVG，也可点击外部取消。预览窗口的 Word（DOCX）、PDF、MD 入口打开对应单栏 Qt 工作区，由工作区选择文件；编辑窗口仍只展示格式；转化窗口展示 PDF→MD 组合图标入口。点击该入口后由 `HomeFormatDialog.onConvertRequested` 通知首页，关闭子窗口成功后再启动现有 Qt 工作区，仍在 Qt 窗口就绪后结束首页 Ability。启动期间禁用重复操作，失败显示错误。
 - `HomeFormatDialog` 通过 `title` 参数接收首页传入的标题，预览为“请选择要预览的格式”，编辑为“请选择要编辑的格式”，转化为“请选择要转化的格式”。标题以 18vp 普通字重显示在内容左上方，与格式选项间隔 16vp；保留右上角关闭按钮、360vp 内外统一宽度及原有背景设置。
 - 功能 SVG 使用 Feather `book-open`、`edit-3`、`repeat`，转化方向使用 `arrow-right`，弹窗关闭使用 `x`，许可随 `rawfile/licenses/feather-icons-LICENSE.txt` 分发。格式 PNG 原样复用 Qt 已有图标，来源见 [文件格式图标说明](qt_app/resources/file-icons/README.md)。所有图标从应用资源加载，无需运行时下载。
 
