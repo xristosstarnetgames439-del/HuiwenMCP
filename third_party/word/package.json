@@ -1,0 +1,29 @@
+{
+  "name": "huiwen-word-libraries",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Build the PortOne fork sources as offline CEF resources",
+  "scripts": {
+    "build": "node ../../packaging/ohos/build_word.mjs"
+  },
+  "dependencies": {
+    "fflate": "0.8.2",
+    "lucide-react": "1.16.0",
+    "prosemirror-commands": "^1.5.2",
+    "prosemirror-dropcursor": "^1.8.2",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-inputrules": "^1.5.0",
+    "prosemirror-keymap": "^1.2.2",
+    "prosemirror-model": "^1.19.4",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-tables": "^1.8.5",
+    "prosemirror-transform": "^1.12.0",
+    "prosemirror-view": "^1.41.6",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

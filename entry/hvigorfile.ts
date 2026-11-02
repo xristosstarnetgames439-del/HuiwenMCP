@@ -31,7 +31,7 @@ const prepareNativeDependenciesPlugin = {
   }
 };
 
-// 每次 Run 准备 Markdown 与 Python 业务资源，内容相同则保留产物和时间戳。
+// 每次 Run 准备 Markdown、Word 与 Python 业务资源，内容相同则保留产物和时间戳。
 const prepareMarkdownResourcesPlugin = {
   pluginId: 'huiwen.prepare-markdown-resources',
   apply(node: any) {
@@ -42,6 +42,10 @@ const prepareMarkdownResourcesPlugin = {
       run: (context: any) => {
         const projectRoot = path.resolve(context.modulePath.toString(), '..');
         execFileSync(process.execPath, [path.join(projectRoot, 'packaging/ohos/build_markdown.mjs')], {
+          cwd: projectRoot,
+          stdio: 'inherit'
+        });
+        execFileSync(process.execPath, [path.join(projectRoot, 'packaging/ohos/build_word.mjs')], {
           cwd: projectRoot,
           stdio: 'inherit'
         });
@@ -170,6 +174,12 @@ const repackHapWithHnpPlugin = {
         const pythonBundleEntry = 'resources/rawfile/python/huiwen_converter.pyz';
         if (!entries.includes(pythonBundleEntry)) {
           throw new Error(`未签名 HAP 中缺少 ${pythonBundleEntry}`);
+        }
+        for (const name of ['huiwen-word.js', 'huiwen-word.css', 'THIRD_PARTY_LICENSES.txt', 'build.json']) {
+          const resource = `resources/rawfile/word/${name}`;
+          if (!entries.includes(resource)) {
+            throw new Error(`未签名 HAP 中缺少 ${resource}`);
+          }
         }
       }
     });

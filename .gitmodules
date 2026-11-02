@@ -6,3 +6,6 @@
 	path = third_party/pdfium
 	url = https://github.com/xristosstarnetgames439-del/pdfium.git
 	branch = huiwen-dev
+[submodule "third_party/portone-docx"]
+	path = third_party/portone-docx
+	url = https://github.com/xristosstarnetgames439-del/docx-editor.git

@@ -126,6 +126,8 @@ HuiWenMCP/
 │   ├── markitdown/                   [子模块] MarkItDown fork
 │   ├── pdfium/                       [子模块] PDFium fork 与鸿蒙构建补丁
 │   ├── markdown/                     [已有] 离线 Markdown 页面源码与依赖锁定
+│   ├── portone-docx/                 [子模块] PortOne DOCX 编辑器 fork，暂未接入页面
+│   ├── word/                         [已有] Word 离线库入口与锁文件，每次 Run 构建到 rawfile/word
 │   ├── cef/                          [已有] CEF 适配与说明，SDK 由固定依赖包准备
 │   ├── prebuilt/                     [已有] Qt/CEF 固定依赖清单与准备说明
 │   └── qt/                           [本机依赖] Qt 头文件、CMake 配置及宿主工具

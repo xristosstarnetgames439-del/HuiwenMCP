@@ -21,6 +21,9 @@
 /third_party/markdown/sources/
 # Markdown Web 资源每次 Run 生成，随 HAP 分发，不进入 Git。
 /entry/src/main/resources/rawfile/markdown/
+# Word 编辑器依赖本机还原，离线资源每次 Run 生成。
+/third_party/word/node_modules/
+/entry/src/main/resources/rawfile/word/
 # Python 业务 pyz 由源码生成，随 HAP 分发，不进入 Git。
 /entry/src/main/resources/rawfile/python/
 # CEF 核心数据由项目内 SDK 同步，保持唯一来源。
