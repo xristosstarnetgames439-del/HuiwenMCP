@@ -59,6 +59,12 @@ def apply_overlays(reverse=False):
             data = ("diff --git " + section).encode()
             applied = run(["git", "apply", "--reverse", "--check", "-"], cwd=SOURCE / directory,
                           input=data, capture_output=True, check=False).returncode == 0
+            # 迁移前的补丁使用旧工具链名称；只撤回能精确匹配的旧补丁段。
+            legacy = data.replace(b"//huiwen_adapter:arm64", b"//huiwen:arm64")
+            if not applied and legacy != data and run(
+                    ["git", "apply", "--reverse", "--check", "-"], cwd=SOURCE / directory,
+                    input=legacy, capture_output=True, check=False).returncode == 0:
+                run(["git", "apply", "--reverse", "-"], cwd=SOURCE / directory, input=legacy)
             if reverse and applied:
                 run(["git", "apply", "--reverse", "-"], cwd=SOURCE / directory, input=data)
             elif not reverse and not applied:

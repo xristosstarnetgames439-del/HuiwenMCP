@@ -6,7 +6,7 @@ index 299504f..d7d5fc8 100644
        _clang_lib_dir = "$clang_base_path/lib/clang/$clang_version/lib"
        _lib_file = "${_prefix}clang_rt.${_libname}${_suffix}.${_ext}"
        libs = [ "$_clang_lib_dir/$_dir/$_lib_file" ]
-+      if (custom_toolchain == "//huiwen:arm64" && _libname == "builtins") {
++      if (custom_toolchain == "//huiwen_adapter:arm64" && _libname == "builtins") {
 +        # The OpenHarmony NDK linker driver supplies its target builtins.
 +        libs = []
 +      }
@@ -22,7 +22,7 @@ index cfc96a4..bb1af96 100644
    build_gn_logs += [ "" ]
  }
 -if (target_os == "mac" || host_os == "mac") {
-+if (target_os == "mac" || (host_os == "mac" && custom_toolchain != "//huiwen:arm64")) {
++if (target_os == "mac" || (host_os == "mac" && custom_toolchain != "//huiwen_adapter:arm64")) {
    import("//build/config/mac/mac_sdk.gni")
    build_gn_logs += [ "### mac_sdk.gni ###" ] + mac_sdk_logs
    build_gn_logs += [ "" ]
