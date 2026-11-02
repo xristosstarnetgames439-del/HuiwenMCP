@@ -26,6 +26,8 @@ export default class EntryAbility extends UIAbility {
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam) {
     super.onCreate(want, launchParam)
+    // 每个新首页都等窗口内容加载完成后再启用自绘标题区。
+    AppStorage.setOrCreate('homeCustomTitleBar', false);
     // 转化环境由 Qt 转化模式按需准备，首页和独立预览不依赖 Python 业务包。
     try {
       initializeHomeAppearance(this.context);
@@ -51,6 +53,16 @@ export default class EntryAbility extends UIAbility {
         this.context.getApplicationContext().eventHub.emit('huiwen.home.ready', err.message);
         return;
       }
+      try {
+        const mainWindow = windowStage.getMainWindowSync();
+        // 只隐藏系统图标和名称，保留原生三键；标题区拖动和双击由组件处理。
+        mainWindow.setWindowTitleMoveEnabled(false);
+        mainWindow.setWindowDecorVisible(false);
+        AppStorage.setOrCreate('homeCustomTitleBar', true);
+      } catch (error) {
+        hilog.warn(this.domain, this.tag, 'HUIWEN_HOME_TITLEBAR_FAILED: %{public}s',
+          (error as Error).message);
+      }
       // 两层背景分别设置，容器设置失败也不会阻断内容背景透明。
       try {
         windowStage.getMainWindowSync().setWindowBackgroundColor('#00000000');
@@ -61,7 +73,7 @@ export default class EntryAbility extends UIAbility {
           failure.code, failure.message);
       }
       try {
-        // 仅设置首页窗口；主内容保持实色，保留系统标题栏与窗口控制按钮。
+        // 仅设置首页窗口；主内容保持实色，标题区透明并保留系统窗口控制按钮。
         // 焦点态透明，非焦点态需使用不透明底色。
         windowStage.getMainWindowSync().setWindowContainerColor('#00000000', '#FFF5F7FB');
       } catch (error) {

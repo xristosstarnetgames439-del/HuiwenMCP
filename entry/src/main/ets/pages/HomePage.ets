@@ -1,6 +1,7 @@
 // ArkTS 首页独立于 QPA 固定加载的 Index 承载页，负责功能入口和窗口交接。
 import { bundleManager, common } from '@kit.AbilityKit';
 import { FunctionSidebar } from '../components/FunctionSidebar';
+import { HomeTitleBar } from '../components/HomeTitleBar';
 import { HomeFeatureCard } from '../components/HomeFeatureCard';
 import { RecentWorkspaceList } from '../components/RecentWorkspaceList';
 import { RecentWorkspaceDialog } from '../components/RecentWorkspaceDialog';
@@ -18,6 +19,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 @Entry
 @Component
 struct HomePage {
+  @StorageLink('homeCustomTitleBar') customTitleBar: boolean = false;
   @StorageLink('homeAppearance') appearance: HomeAppearance = HomeAppearance.System;
   @State menuOpen: boolean = false;
   @State availableWidth: number = 640;
@@ -241,27 +243,34 @@ struct HomePage {
   build() {
     // 根布局透明，只有左侧窄栏透出窗口后方；主内容自己绘制不透明背景。
     Stack({ alignContent: Alignment.BottomStart }) {
-      Row() {
-        FunctionSidebar({
-          menuOpen: this.menuOpen,
-          onMenuAnchorChanged: (right: number, bottom: number) => {
-            this.menuAnchorRight = right;
-            this.menuAnchorBottom = bottom;
-          },
-          onMenuRequested: () => {
-            if (!this.workspaceLaunching && this.homeDialogId < 0 && !this.homeDialogOpening &&
-              this.aboutDialogId < 0 && !this.aboutDialogOpening) {
-              this.menuOpen = !this.menuOpen;
+      Column() {
+        if (this.customTitleBar) {
+          HomeTitleBar()
+        }
+        Row() {
+          FunctionSidebar({
+            menuOpen: this.menuOpen,
+            onMenuAnchorChanged: (right: number, bottom: number) => {
+              this.menuAnchorRight = right;
+              this.menuAnchorBottom = bottom;
+            },
+            onMenuRequested: () => {
+              if (!this.workspaceLaunching && this.homeDialogId < 0 && !this.homeDialogOpening &&
+                this.aboutDialogId < 0 && !this.aboutDialogOpening) {
+                this.menuOpen = !this.menuOpen;
+              }
             }
-          }
-        })
-        this.homeContent()
+          })
+          this.homeContent()
+        }
+        .width('100%')
+        .layoutWeight(1)
+        // 标题栏下方的内容按顶部圆角裁剪，缺口沿用窗口透明背景。
+        .borderRadius({ topLeft: 24, topRight: 24, bottomLeft: 0, bottomRight: 0 })
+        .clip(true)
       }
       .width('100%')
       .height('100%')
-      // 标题栏下方的内容按顶部圆角裁剪，缺口沿用窗口透明背景。
-      .borderRadius({ topLeft: 24, topRight: 24, bottomLeft: 0, bottomRight: 0 })
-      .clip(true)
       if (this.menuOpen) {
         // 背景点击层关闭两级菜单，面板阻止命中其下方的背景层。
         Stack({ alignContent: Alignment.BottomStart }) {
