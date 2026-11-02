@@ -24,12 +24,12 @@
 
 ## 恢复与升级
 
-macOS ARM64 宿主首次 Run 由 `prepare_prebuilt.py` 自动恢复固定 SDK 和运行库，
+macOS ARM64 宿主首次 Run 由 `third_party/prebuilt/prepare.py` 自动恢复固定 SDK 和运行库，
 不再要求克隆者提供通达工程。版本和哈希见 `third_party/prebuilt/manifest.json`。
 维护者更换依赖来源时仍可使用以下迁入命令，再更新固定包及对应 HAR 源码：
 
 ```sh
-python3 packaging/ohos/prepare_cef.py --source /已有工程/OpenQtCef
+python3 third_party/cef/prepare.py --source /已有工程/OpenQtCef
 ```
 
 脚本先检查必需文件、ARM64 ELF 架构和动态依赖，再复制并逐文件校验。
@@ -39,7 +39,7 @@ SDK 文件及大体积运行库遵循现有本地依赖策略，不进入 Git；
 
 ## 汇文 Markdown 预览接入
 
-SDK 迁入后会调用 `packaging/ohos/prepare_cef_preview.py`。Run 在恢复固定包后同样调用该脚本，
+SDK 迁入后会调用 `third_party/cef/prepare_preview.py`。Run 在恢复固定包后同样调用该脚本，
 将 CEF 核心数据同步到 `entry/src/main/resources/resfile/`。HAR 源码已纳入 `web_engine/`，
 固定其 JS 依赖并清除来源模块的权限声明；Run 不再生成或覆盖 HAR 源码。
 应用在 `entry/src/main/module.json5` 中单独声明 CEF 使用的 `INTERNET` 和 `GET_NETWORK_INFO`。

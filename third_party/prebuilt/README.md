@@ -6,7 +6,7 @@
 ## 使用
 
 克隆子模块、安装 DevEco SDK 并复制根目录构建模板后，首次 Run 的 `PrepareNativeDependencies`
-调用 `prepare_prebuilt.py`，恢复 Qt/CEF，再执行 PDFium。Markdown 任务依赖该任务，
+调用 `third_party/prebuilt/prepare.py`，恢复 Qt/CEF，再执行 PDFium。Markdown 任务依赖该任务，
 随后同步 CEF 核心数据和构建 Markdown 资源。Qt/CEF 本体不重编。
 源码模块 `third_party/cef/web_engine/` 已在仓库中，因此 OHPM 先于 Run 解析依赖也能成功。
 本机 `build-profile.json5` 若沿用旧生成目录，需将 web_engine.srcPath 改为
@@ -19,7 +19,7 @@
 离线导入同一包：
 
 ```sh
-python3 packaging/ohos/prepare_prebuilt.py --archive /绝对路径/huiwen-qt-cef-darwin-arm64-20261022-v1.tar.gz
+python3 third_party/prebuilt/prepare.py --archive /绝对路径/huiwen-qt-cef-darwin-arm64-20261022-v1.tar.gz
 ```
 
 也可通过 `HUIWEN_PREBUILT_ARCHIVE` 指定离线包，仍强制校验锁定哈希。
@@ -27,10 +27,10 @@ Python HNP 运行时、DevEco SDK、设备签名仍使用原项目配置，不�
 
 ## 维护与发布
 
-先通过现有 `prepare_qt.py`、`prepare_cef.py` 准备维护者环境，然后执行：
+先通过 `third_party/qt/prepare.py`、`third_party/cef/prepare.py` 准备维护者环境，然后执行：
 
 ```sh
-python3 packaging/ohos/pack_prebuilt.py \
+python3 third_party/prebuilt/pack.py \
   --version darwin-arm64-20261022-v1 \
   --url https://github.com/xristosstarnetgames439-del/HuiwenMCP/releases/download/native-deps-20261022-v1/huiwen-qt-cef-darwin-arm64-20261022-v1.tar.gz
 ```
@@ -44,7 +44,7 @@ python3 packaging/ohos/pack_prebuilt.py \
 验证依赖恢复逻辑，不编译或打包应用：
 
 ```sh
-python3 packaging/ohos/check_prebuilt.py
+python3 third_party/prebuilt/check.py
 ```
 
 打包排序与时间戳固定；恢复时检查包哈希、文件哈希、执行权限和符号链接，

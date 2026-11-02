@@ -2,14 +2,15 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync
+  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const directory = path.join(root, 'third_party/markdown');
+const source = path.join(directory, 'source');
 const output = path.join(root, 'entry/src/main/resources/rawfile/markdown');
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 const sha256 = (data) => createHash('sha256').update(data).digest('hex');
@@ -56,6 +57,10 @@ function prepareDependencies() {
 
 async function main() {
   console.info('[HUIWEN_MD] START');
+  if (!existsSync(path.join(source, 'aliases.mjs'))) {
+    throw new Error('缺少 MD 核心源码，请在项目根目录执行 git submodule update --init --recursive');
+  }
+  const { sourceAliases } = await import(pathToFileURL(path.join(source, 'aliases.mjs')).href);
   prepareDependencies();
   const require = createRequire(path.join(directory, 'package.json'));
   const { build } = require('esbuild');
@@ -64,6 +69,7 @@ async function main() {
     entryPoints: ['library.js'],
     outfile: path.join(output, 'huiwen-markdown.js'),
     bundle: true,
+    alias: sourceAliases,
     platform: 'browser',
     format: 'iife',
     globalName: 'HuiwenMarkdown',
@@ -80,7 +86,18 @@ async function main() {
   if (Object.values(result.metafile.outputs).some((file) => file.imports.some((item) => item.external))) {
     throw new Error('Markdown 浏览器资源仍引用外部模块');
   }
-  assets.set('THIRD_PARTY_LICENSES.txt', readFileSync(path.join(directory, 'licenses/THIRD_PARTY_LICENSES.txt')));
+  if (Object.keys(result.metafile.inputs).some((name) => name.startsWith('node_modules/'))) {
+    throw new Error('Markdown 运行时代码必须来自 source 子模块，不能回退到 npm 副本');
+  }
+  const components = readJson(path.join(source, 'SOURCES.json')).packages;
+  const licenses = Object.entries(components).map(([name, info]) => {
+    const location = path.join(source, info.source_path);
+    const files = readdirSync(location).filter((file) => /^(licen[cs]e|copying|notice)([.-]|$)/i.test(file)).sort();
+    if (!files.some((file) => /^(licen[cs]e|copying)/i.test(file))) throw new Error(`缺少许可证：${name}`);
+    return `${name}@${info.version} (${info.license})\n` +
+      files.map((file) => readFileSync(path.join(location, file), 'utf8')).join('\n');
+  }).join('\n\n------------------------------------------------------------\n\n');
+  assets.set('THIRD_PARTY_LICENSES.txt', Buffer.from(licenses));
   const page = readFileSync(path.join(directory, 'preview.html'), 'utf8')
     .replace('/* HUIWEN_PREVIEW_STYLE */', () => Buffer.from(assets.get('huiwen-markdown.css')).toString('utf8'))
     .replace('/* HUIWEN_PREVIEW_SCRIPT */', () => Buffer.from(assets.get('huiwen-markdown.js')).toString('utf8')
@@ -89,7 +106,8 @@ async function main() {
   const metadata = {
     format: 'iife', global: 'HuiwenMarkdown', target: 'chrome114',
     lock_sha256: sha256(readFileSync(path.join(directory, 'package-lock.json'))),
-    inputs: Object.fromEntries([...Object.keys(result.metafile.inputs), 'preview.html'].sort().map((name) => [
+    inputs: Object.fromEntries([...Object.keys(result.metafile.inputs), 'preview.html',
+      'source/aliases.mjs', 'source/SOURCES.json'].sort().map((name) => [
       name, sha256(readFileSync(path.resolve(directory, name)))
     ])),
     files: Object.fromEntries([...assets].map(([name, contents]) => [name, {

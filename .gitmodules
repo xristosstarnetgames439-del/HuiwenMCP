@@ -1,11 +1,14 @@
 [submodule "third_party/markitdown"]
-	path = third_party/markitdown
+	path = third_party/markitdown/source
 	url = https://github.com/xristosstarnetgames439-del/markitdown.git
 	branch = huiwen-dev
 [submodule "third_party/pdfium"]
-	path = third_party/pdfium
+	path = third_party/pdfium/source
 	url = https://github.com/xristosstarnetgames439-del/pdfium.git
 	branch = huiwen-dev
 [submodule "third_party/portone-docx"]
-	path = third_party/portone-docx
+	path = third_party/word/source
 	url = https://github.com/xristosstarnetgames439-del/docx-editor.git
+[submodule "third_party/markdown/source"]
+	path = third_party/markdown/source
+	url = https://github.com/xristosstarnetgames439-del/huiwen-markdown.git

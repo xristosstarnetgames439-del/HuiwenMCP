@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Build the PortOne fork sources as offline CEF resources",
   "scripts": {
-    "build": "node ../../packaging/ohos/build_word.mjs"
+    "build": "node build.mjs"
   },
   "dependencies": {
     "fflate": "0.8.2",

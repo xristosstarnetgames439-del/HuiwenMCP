@@ -1,0 +1,30 @@
+# Copyright 2026 Huiwen contributors
+# Use of this source code is governed by the BSD-style license in
+# source/LICENSE.
+
+import("//build/config/clang/clang.gni")
+import("//build/toolchain/gcc_toolchain.gni")
+
+declare_args() {
+  ohos_ndk = ""
+}
+
+assert(ohos_ndk != "", "Set ohos_ndk to the OpenHarmony native SDK directory")
+
+gcc_toolchain("arm64") {
+  cc = "$clang_base_path/bin/clang"
+  cxx = "$clang_base_path/bin/clang++"
+  ar = "$ohos_ndk/llvm/bin/llvm-ar"
+  nm = "$ohos_ndk/llvm/bin/llvm-nm"
+  readelf = "$ohos_ndk/llvm/bin/llvm-readelf"
+
+  # NDK driver supplies the matching target startup files and builtins.
+  ld = "$ohos_ndk/llvm/bin/clang++"
+  extra_cppflags = "--target=aarch64-linux-ohos --sysroot=$ohos_ndk/sysroot"
+  extra_ldflags = "--target=aarch64-linux-ohos --sysroot=$ohos_ndk/sysroot -fuse-ld=$clang_base_path/bin/ld.lld -Wl,--exclude-libs,ALL"
+  toolchain_args = {
+    current_cpu = "arm64"
+    current_os = "linux"
+    is_clang = true
+  }
+}

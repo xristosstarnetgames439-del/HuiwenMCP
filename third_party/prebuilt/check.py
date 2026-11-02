@@ -3,12 +3,14 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import sys
 import platform
 import tarfile
 import tempfile
 from unittest.mock import patch
 
-from prepare_prebuilt import prepare, MANIFEST
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from third_party.prebuilt.prepare import prepare, MANIFEST
 
 
 def fixture(root, link="../../../entry/libs/arm64-v8a/libcef.so"):

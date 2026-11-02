@@ -17,7 +17,7 @@ const relativeOutput = 'entry/src/main/resources/rawfile/markdown';
 const sha256 = (data) => createHash('sha256').update(data).digest('hex');
 const readOutput = (name) => readFileSync(path.join(sandbox, relativeOutput, name));
 function run() {
-  return spawnSync(process.execPath, [path.join(sandbox, 'packaging/ohos/build_markdown.mjs')], {
+  return spawnSync(process.execPath, [path.join(sandbox, 'third_party/markdown/build.mjs')], {
     cwd: sandbox, encoding: 'utf8', timeout: 180000
   });
 }
@@ -25,11 +25,15 @@ function run() {
 try {
   const source = path.join(sandbox, 'third_party/markdown');
   mkdirSync(source, { recursive: true });
-  mkdirSync(path.join(sandbox, 'packaging/ohos'), { recursive: true });
-  for (const name of ['package.json', 'package-lock.json', 'library.js', 'library.css', 'preview.html', 'licenses']) {
+  for (const name of ['package.json', 'package-lock.json', 'library.js', 'library.css', 'preview.html']) {
     cpSync(path.join(root, 'third_party/markdown', name), path.join(source, name), { recursive: true });
   }
-  cpSync(path.join(root, 'packaging/ohos/build_markdown.mjs'), path.join(sandbox, 'packaging/ohos/build_markdown.mjs'));
+  const core = path.join(root, 'third_party/markdown/source');
+  cpSync(core, path.join(source, 'source'), {
+    recursive: true,
+    filter: (file) => !['.git', 'node_modules', 'dist'].includes(path.relative(core, file).split(path.sep)[0])
+  });
+  cpSync(path.join(root, 'third_party/markdown/build.mjs'), path.join(sandbox, 'third_party/markdown/build.mjs'));
   assert.equal(existsSync(path.join(source, 'node_modules')), false);
   const first = run();
   assert.equal(first.status, 0, first.stdout + first.stderr);
@@ -124,7 +128,9 @@ try {
     assert.equal(contents.length, expected.bytes);
     assert.equal(sha256(contents), expected.sha256);
   }
-  assert.deepEqual(readOutput('THIRD_PARTY_LICENSES.txt'), readFileSync(path.join(source, 'licenses/THIRD_PARTY_LICENSES.txt')));
+  assert.match(readOutput('THIRD_PARTY_LICENSES.txt').toString(), /markdown-it@14\.3\.3/);
+  assert.ok(Object.keys(metadata.inputs).some((name) => name.startsWith('source/vendor/codemirror-state/src/')));
+  assert.ok(!Object.keys(metadata.inputs).some((name) => name.startsWith('node_modules/')));
 
   rmSync(path.join(source, 'node_modules', `@esbuild/${process.platform}-${process.arch}`), { recursive: true });
   const repaired = run();
@@ -140,6 +146,12 @@ try {
   assert.notEqual(sha256(readOutput('huiwen-markdown.js')), initialHash);
   assert.match(readOutput('huiwen-markdown.js').toString(), /HUIWEN_MD_UPDATE_CHECK/);
   assert.match(readOutput('huiwen-markdown.css').toString(), /huiwen-md-update-check/);
+  appendFileSync(path.join(source, 'source/vendor/codemirror-state/src/index.ts'),
+    '\nexport const huiwenCoreProbe = "HUIWEN_MD_CORE_UPDATE_CHECK";\n');
+  appendFileSync(path.join(source, 'library.js'), '\nexport { huiwenCoreProbe } from "@codemirror/state";\n');
+  const coreUpdated = run();
+  assert.equal(coreUpdated.status, 0, coreUpdated.stdout + coreUpdated.stderr);
+  assert.match(readOutput('huiwen-markdown.js').toString(), /HUIWEN_MD_CORE_UPDATE_CHECK/);
   const validHash = sha256(readOutput('huiwen-markdown.js'));
   appendFileSync(path.join(source, 'library.js'), '\nexport const invalid = ;\n');
   const failed = run();
@@ -174,7 +186,7 @@ try {
   }
   assert.throws(() => task.run({ modulePath: path.join(sandbox, 'entry') }), (error) => error === injected);
   assert.equal(calls[0][0], process.execPath);
-  assert.equal(calls[0][1][0], path.join(sandbox, 'packaging/ohos/build_markdown.mjs'));
+  assert.equal(calls[0][1][0], path.join(sandbox, 'third_party/markdown/build.mjs'));
   console.info('MARKDOWN_BUILD_OK: 首次还原、缺包修复、离线库接口、源码更新、失败阻断、任务注册检查通过');
 } finally {
   rmSync(sandbox, { recursive: true, force: true });

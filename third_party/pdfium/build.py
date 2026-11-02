@@ -21,9 +21,11 @@ if sys.version_info < (3, 9) or not hasattr(tarfile, "data_filter"):
         "请通过 HOST_PYTHON 环境变量或 local.properties 中的 python.host.path "
         "指定解释器的绝对路径后重试。")
 
-from prepare_qt import ROOT, copy_changed
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from third_party.qt.prepare import ROOT, copy_changed
 
-SOURCE = ROOT / "third_party/pdfium"
+ADAPTER = ROOT / "third_party/pdfium"
+SOURCE = ADAPTER / "source"
 TOOLS = ROOT / ".native-tools/depot_tools"
 OUTPUT = SOURCE / "out/ohos-arm64"
 LIBRARY = ROOT / "entry/libs/arm64-v8a/libpdfium.so"
@@ -50,7 +52,7 @@ def native_sdk():
 
 def apply_overlays(reverse=False):
     for directory in ("build", "buildtools"):
-        patch = SOURCE / "huiwen" / f"chromium-{directory}.patch"
+        patch = ADAPTER / "patches" / f"chromium-{directory}.patch"
         if not (SOURCE / directory / ".git").exists():
             continue
         for section in patch.read_text().split("diff --git ")[1:]:
@@ -61,6 +63,16 @@ def apply_overlays(reverse=False):
                 run(["git", "apply", "--reverse", "-"], cwd=SOURCE / directory, input=data)
             elif not reverse and not applied:
                 run(["git", "apply", "-"], cwd=SOURCE / directory, input=data)
+
+
+def exclude_generated(name):
+    git_directory = run(["git", "rev-parse", "--absolute-git-dir"], capture_output=True, text=True).stdout.strip()
+    exclude = Path(git_directory) / "info/exclude"
+    exclude.parent.mkdir(exist_ok=True)
+    entry = f"/{name}"
+    if not exclude.exists() or entry not in exclude.read_text().splitlines():
+        with exclude.open("a") as file:
+            file.write(f"\n{entry}\n")
 
 
 def sync_dependencies():
@@ -96,13 +108,8 @@ def sync_dependencies():
             node.value = ast.Dict(keys=[key for key, _ in pairs], values=[value for _, value in pairs])
     generated = ".huiwen_DEPS"
     (SOURCE / generated).write_text(ast.unparse(tree) + "\n")
-    git_directory = run(["git", "rev-parse", "--absolute-git-dir"], capture_output=True, text=True).stdout.strip()
-    exclude = Path(git_directory) / "info/exclude"
-    exclude.parent.mkdir(exist_ok=True)
-    if not exclude.exists() or generated not in exclude.read_text():
-        with exclude.open("a") as file:
-            file.write(f"\n/{generated}\n")
-    solution = dict(name="pdfium", url="https://github.com/xristosstarnetgames439-del/pdfium.git",
+    exclude_generated(generated)
+    solution = dict(name="pdfium/source", url="https://github.com/xristosstarnetgames439-del/pdfium.git",
                     managed=False, deps_file=generated,
                     custom_vars=dict(checkout_configuration="minimal", checkout_clang_tidy=False,
                                      checkout_clangd=False, checkout_clang_coverage_tools=False))
@@ -181,8 +188,8 @@ def check_library(path, sdk):
 
 
 def build(sync=False):
-    if not (SOURCE / "huiwen/BUILD.gn").is_file():
-        raise SystemExit("缺少 PDFium 鸿蒙分支，请初始化 third_party/pdfium 子模块")
+    if not (SOURCE / "public/fpdfview.h").is_file():
+        raise SystemExit("缺少 PDFium 源码，请执行 git submodule update --init --recursive")
     sdk = native_sdk()
     deps_hash = hashlib.sha256((SOURCE / "DEPS").read_bytes()).hexdigest()
     stamp = ROOT / ".native-tools/pdfium-deps.sha256"
@@ -198,7 +205,10 @@ def build(sync=False):
     if not gn.is_file() or not (compiler / "bin/clang++").is_file():
         raise SystemExit("PDFium 构建工具缺失，请加 --sync 重新准备依赖")
     apply_overlays()
-    args = dict(target_os="linux", target_cpu="arm64", custom_toolchain="//huiwen:arm64",
+    # GN 要求工具链位于源码根目录内；只生成忽略文件，适配模板由主项目维护。
+    copy_changed(ADAPTER / "ohos/BUILD.gn", SOURCE / "huiwen_adapter/BUILD.gn")
+    exclude_generated("huiwen_adapter/")
+    args = dict(target_os="linux", target_cpu="arm64", custom_toolchain="//huiwen_adapter:arm64",
                 ohos_ndk=str(sdk), clang_base_path=str(compiler),
                 target_sysroot=str(sdk / "sysroot"), use_sysroot=False,
                 is_debug=False, is_component_build=False, symbol_level=0,
@@ -235,6 +245,8 @@ def build(sync=False):
     revision = run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     patch = run(["git", "diff", "HEAD", "--", "."], capture_output=True).stdout
     metadata = dict(source_commit=revision, working_diff_sha256=hashlib.sha256(patch).hexdigest(),
+                    adapter_sha256={str(path.relative_to(ADAPTER)): hashlib.sha256(path.read_bytes()).hexdigest()
+                                    for path in (ADAPTER / "ohos/BUILD.gn", *sorted((ADAPTER / "patches").glob("*.patch")))},
                     target="aarch64-linux-ohos", args=args, dependencies=dependencies,
                     sha256=hashlib.sha256(LIBRARY.read_bytes()).hexdigest())
     (LIBRARY.parent / "pdfium-build.json").write_text(json.dumps(metadata, indent=2) + "\n")

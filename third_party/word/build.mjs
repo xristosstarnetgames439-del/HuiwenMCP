@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const directory = path.join(root, 'third_party/word');
-const source = path.join(root, 'third_party/portone-docx');
+const source = path.join(root, 'third_party/word/source');
 const output = path.join(root, 'entry/src/main/resources/rawfile/word');
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 const sha256 = (data) => createHash('sha256').update(data).digest('hex');
@@ -83,12 +83,8 @@ function collectLicenses(inputs) {
 async function main() {
   console.info('[HUIWEN_WORD] START');
   if (!existsSync(path.join(source, 'src/index.ts'))) {
-    // Git 默认按主项目固定提交还原；不拉取上游最新版本或覆盖本地源码修改。
-    execFileSync('git', ['submodule', 'update', '--init', '--', 'third_party/portone-docx'], {
-      cwd: root, stdio: 'inherit'
-    });
+    throw new Error('缺少 PortOne 源码，请在项目根目录执行 git submodule update --init --recursive');
   }
-  if (!existsSync(path.join(source, 'src/index.ts'))) throw new Error('PortOne 源码子模块未就绪');
   prepareDependencies();
   const require = createRequire(path.join(directory, 'package.json'));
   const { build } = require('esbuild');
@@ -111,7 +107,7 @@ async function main() {
   assets.set('THIRD_PARTY_LICENSES.txt', Buffer.from(collectLicenses(inputs)));
   const metadata = {
     format: 'iife', global: 'HuiwenWord', target: 'chrome114',
-    source: 'third_party/portone-docx', version: readJson(path.join(source, 'package.json')).version,
+    source: 'third_party/word/source', version: readJson(path.join(source, 'package.json')).version,
     lock_sha256: sha256(readFileSync(path.join(directory, 'package-lock.json'))),
     inputs: Object.fromEntries(inputs.map((name) => [name, sha256(readFileSync(path.resolve(directory, name)))])),
     files: Object.fromEntries([...assets].map(([name, contents]) => [name, {

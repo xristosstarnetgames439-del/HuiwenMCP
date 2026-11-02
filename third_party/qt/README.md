@@ -10,7 +10,7 @@
 维护者从原始 SDK 首次制包或升级版本时执行：
 
 ```sh
-python3 packaging/ohos/prepare_qt.py \
+python3 third_party/qt/prepare.py \
   --source /你的/Qt5.15.12-ohos17-arm64-v8a \
   --license-source /对应的/qtbase源码目录
 ```

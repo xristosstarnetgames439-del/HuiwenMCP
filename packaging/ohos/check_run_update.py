@@ -5,12 +5,14 @@ import hashlib
 import os
 from pathlib import Path
 import subprocess
+import sys
 import zipfile
 
 from check_workspace_hap import check_hap
-from prepare_qt import ROOT
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from third_party.qt.prepare import ROOT
 
-SOURCE = ROOT / "third_party/pdfium/fpdfsdk/fpdf_view.cpp"
+SOURCE = ROOT / "third_party/pdfium/source/fpdfsdk/fpdf_view.cpp"
 LIBRARY = ROOT / "entry/libs/arm64-v8a/libpdfium.so"
 HAP = ROOT / "entry/build/default/outputs/default/entry-default-signed.hap"
 

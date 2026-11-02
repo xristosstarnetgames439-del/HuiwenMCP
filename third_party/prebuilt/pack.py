@@ -4,10 +4,12 @@ import gzip
 import json
 import os
 from pathlib import Path
+import sys
 import stat
 import tarfile
 
-from prepare_prebuilt import ROOT, MANIFEST, sha256
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from third_party.prebuilt.prepare import ROOT, MANIFEST, sha256
 
 
 def pack(version, url):

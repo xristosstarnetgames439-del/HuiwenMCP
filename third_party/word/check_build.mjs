@@ -14,22 +14,23 @@ const directory = path.join(sandbox, 'third_party/word');
 const output = path.join(sandbox, 'entry/src/main/resources/rawfile/word');
 const readOutput = (name) => readFileSync(path.join(output, name), 'utf8');
 function run() {
-  return spawnSync(process.execPath, [path.join(sandbox, 'packaging/ohos/build_word.mjs')], {
+  return spawnSync(process.execPath, [path.join(sandbox, 'third_party/word/build.mjs')], {
     cwd: sandbox, encoding: 'utf8', timeout: 120000
   });
 }
 
 try {
   assert.ok(existsSync(path.join(root, 'third_party/word/node_modules/.huiwen-install.sha256')),
-    '先运行 build_word.mjs 准备锁定依赖');
-  mkdirSync(path.join(sandbox, 'third_party/portone-docx'), { recursive: true });
-  mkdirSync(path.join(sandbox, 'packaging/ohos'), { recursive: true });
-  cpSync(path.join(root, 'third_party/word'), directory, { recursive: true });
-  for (const name of ['src', 'package.json', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'tsconfig.json']) {
-    cpSync(path.join(root, 'third_party/portone-docx', name),
-      path.join(sandbox, 'third_party/portone-docx', name), { recursive: true });
+    '先运行 third_party/word/build.mjs 准备锁定依赖');
+  mkdirSync(path.join(sandbox, 'third_party/word/source'), { recursive: true });
+  for (const name of ['package.json', 'package-lock.json', 'library.ts', 'node_modules']) {
+    cpSync(path.join(root, 'third_party/word', name), path.join(directory, name), { recursive: true });
   }
-  cpSync(path.join(root, 'packaging/ohos/build_word.mjs'), path.join(sandbox, 'packaging/ohos/build_word.mjs'));
+  for (const name of ['src', 'package.json', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'tsconfig.json']) {
+    cpSync(path.join(root, 'third_party/word/source', name),
+      path.join(sandbox, 'third_party/word/source', name), { recursive: true });
+  }
+  cpSync(path.join(root, 'third_party/word/build.mjs'), path.join(sandbox, 'third_party/word/build.mjs'));
   const first = run();
   assert.equal(first.status, 0, first.stdout + first.stderr);
   assert.match(first.stdout, /DEPENDENCIES cached/);
@@ -55,7 +56,7 @@ try {
   assert.equal(second.status, 0, second.stdout + second.stderr);
   assert.match(second.stdout, /CACHED output=/);
   assert.equal(statSync(path.join(output, 'huiwen-word.js')).mtimeMs, before);
-  const forkEntry = path.join(sandbox, 'third_party/portone-docx/src/index.ts');
+  const forkEntry = path.join(sandbox, 'third_party/word/source/src/index.ts');
   appendFileSync(forkEntry, '\nexport const huiwenWordUpdateProbe = "HUIWEN_WORD_UPDATE_CHECK";\n');
   const updated = run();
   assert.equal(updated.status, 0, updated.stdout + updated.stderr);
@@ -81,7 +82,7 @@ try {
       if (name === '@ohos/hvigor-ohos-plugin') return { hapTasks: {} };
       if (name === 'child_process') return { execFileSync: (...args) => {
         calls.push(args);
-        if (args[1][0].endsWith('build_word.mjs')) throw injected;
+        if (args[1][0] === path.join(sandbox, 'third_party/word/build.mjs')) throw injected;
       } };
       return require(name);
     }
@@ -95,7 +96,7 @@ try {
   assert.throws(() => task.run({ modulePath: path.join(sandbox, 'entry') }), (error) => error === injected);
   assert.equal(calls.length, 2); // Word 失败后不执行 Python／CEF 准备。
   assert.equal(calls[1][0], process.execPath);
-  assert.equal(calls[1][1][0], path.join(sandbox, 'packaging/ohos/build_word.mjs'));
+  assert.equal(calls[1][1][0], path.join(sandbox, 'third_party/word/build.mjs'));
   console.info('WORD_BUILD_OK: 离线库接口、缓存复用、fork 源码更新、失败阻断与任务注册检查通过');
 } finally {
   rmSync(sandbox, { recursive: true, force: true });

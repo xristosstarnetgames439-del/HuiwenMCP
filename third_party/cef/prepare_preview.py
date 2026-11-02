@@ -1,5 +1,6 @@
 """从项目内 CEF SDK 准备汇文预览使用的 HAR 和资源，不重编 CEF 或 Qt。"""
-from prepare_qt import ROOT, copy_changed
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from third_party.qt.prepare import ROOT, copy_changed
 
 
 def prepare():

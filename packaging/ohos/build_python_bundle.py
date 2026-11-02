@@ -12,9 +12,9 @@ OUTPUT = ROOT / "entry/src/main/resources/rawfile/python/huiwen_converter.pyz"
 
 
 def build():
-    source = ROOT / "third_party/markitdown/packages/markitdown/src/markitdown"
+    source = ROOT / "third_party/markitdown/source/packages/markitdown/src/markitdown"
     if not (source / "__init__.py").is_file():
-        raise SystemExit("缺少 MarkItDown 源码，请先初始化 third_party/markitdown 子模块")
+        raise SystemExit("缺少 MarkItDown 源码，请执行 git submodule update --init --recursive")
     with tempfile.TemporaryDirectory(prefix="huiwen-python-") as directory:
         stage = Path(directory)
         # 只收集源码与包内资源；本机字节码和原生扩展不进入 zip 导入路径。
@@ -22,12 +22,12 @@ def build():
         shutil.copytree(source, stage / "markitdown", ignore=ignored)
         shutil.copytree(ROOT / "converter/huiwen_converter", stage / "huiwen_converter", ignore=ignored)
         subprocess.run(["patch", "--batch", "-s", "-d", str(stage), "-p1", "-i",
-                        str(ROOT / "packaging/ohos/markitdown-no-magika.patch")], check=True)
+                        str(ROOT / "third_party/markitdown/patches/no-magika.patch")], check=True)
         shutil.copyfile(ROOT / "converter/pdf2md/convert.py", stage / "__main__.py")
         licenses = stage / "licenses/markitdown"
         licenses.mkdir(parents=True)
-        shutil.copyfile(ROOT / "third_party/markitdown/LICENSE", licenses / "LICENSE")
-        shutil.copyfile(ROOT / "third_party/markitdown/packages/markitdown/ThirdPartyNotices.md",
+        shutil.copyfile(ROOT / "third_party/markitdown/source/LICENSE", licenses / "LICENSE")
+        shutil.copyfile(ROOT / "third_party/markitdown/source/packages/markitdown/ThirdPartyNotices.md",
                         licenses / "ThirdPartyNotices.md")
         archive = io.BytesIO()
         with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as package:

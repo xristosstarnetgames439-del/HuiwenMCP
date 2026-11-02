@@ -5,7 +5,7 @@ project(HuiwenMCP)
 get_filename_component(project_root "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
 set(QT_PREFIX "${project_root}/third_party/qt")
 if(NOT EXISTS "${QT_PREFIX}/lib/cmake/Qt5/Qt5Config.cmake")
-    message(FATAL_ERROR "缺少项目内 Qt 开发包，请运行 packaging/ohos/prepare_qt.py")
+    message(FATAL_ERROR "缺少项目内 Qt 开发包，请运行 third_party/qt/prepare.py")
 endif()
 list(APPEND CMAKE_FIND_ROOT_PATH "${QT_PREFIX}")
 set(Qt5_DIR "${QT_PREFIX}/lib/cmake/Qt5" CACHE PATH "项目内 Qt 配置" FORCE)
@@ -39,5 +39,5 @@ add_custom_command(TARGET huiwen_native POST_BUILD
 
 # PDFium 由 Run 的准备任务生成并部署，Qt 工作区链接该库显示正文预览。
 if(NOT EXISTS "${project_root}/entry/libs/arm64-v8a/libpdfium.so")
-    message(FATAL_ERROR "缺少 libpdfium.so，请运行 packaging/ohos/build_pdfium.py")
+    message(FATAL_ERROR "缺少 libpdfium.so，请运行 third_party/pdfium/build.py")
 endif()

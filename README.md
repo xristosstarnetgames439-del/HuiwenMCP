@@ -2,6 +2,20 @@
 
 鸿蒙 PC 上的 PDF 与 Markdown 阅读、转换应用。本阶段先把文字型 PDF 转成沙箱内的 MD 文件。
 
+## 克隆后先初始化第三方源码
+
+普通克隆主分支后，在项目根目录执行这一整条命令，下载四个独立仓库的固定版本：
+
+```sh
+git submodule sync --recursive && git submodule update --init --recursive
+```
+
+主项目只保存业务代码、第三方桥接／构建适配和子模块指针；PDFium、MarkItDown、MD 核心、
+PortOne 的源码分别位于 `third_party/{pdfium,markitdown,markdown,word}/source/`。
+未初始化时这些源码目录为空，Run 会提示并停止。源码修改在对应子模块提交和推送，
+外层适配修改在主项目提交；详见 [第三方维护规则](third_party/README.md)。
+Qt／CEF 继续使用原来的固定预编译 SDK／`.so`，不新增内核源码或改变固定包。
+
 ## 许可证
 
 本项目自有代码采用 [PolyForm Noncommercial License 1.0.0](LICENSE)，官方原文见 [PolyForm 网站](https://polyformproject.org/licenses/noncommercial/1.0.0)。这是源码公开的非商业使用许可。
@@ -17,7 +31,7 @@
 - 介绍区背景与黑色 ∞ 使用独立 SVG：银灰底图包含左上、右下的淡化文档及斜向柔光，∞ 的反光从中心向两侧连续衰减；底图等比例铺满，符号等比例居中，文字独立叠加，整体由 24vp 圆角裁切。本次素材与布局仅做静态检查和设计渲染，尚未编译、打包或设备验收。
 - 首页右侧入口改为顶部排列，下方“最近工作区”默认展示三条任务目录记录；当前可恢复 PDF→MD 转化任务，加载原 PDF 和已有 MD，并在 Qt 载入成功后更新任务目录最近使用时间。本次最近列表、恢复与时间更新仅做格式检查，尚未编译、打包或真机验收。
 - ArkTS 首页左侧有 60vp 半透明窄侧栏，底部 36vp 三横线 SVG 按钮可打开“关于、外观、截图、文件管理、设置”菜单。菜单通过实际布局坐标，让菜单底部与按钮底部对齐，菜单左边与按钮右边保持 8vp 间距；外观二级菜单提供浅色、深色、跟随系统，选择持久保存并应用于 ArkTS 首页和弹窗；Qt 工作区仍使用自身配色。关于弹窗读取实际应用版本号；截图、文件管理、设置本阶段只保留入口并提示暂未开放。首页内容背景与窗口容器分别设置透明，焦点态容器透明，非焦点态使用实色，右侧主内容保持不透明。
-- Qt 开发依赖保存在 `third_party/qt/`，运行库从 `entry/libs/arm64-v8a/` 链接并随 HAP 分发；PDFium fork 保存在 `third_party/pdfium/`，Qt 左侧输入区域已接入其公开 C API 实现正文预览；已完成鸿蒙编译、HAP 打包；系统目录跳转沿用原有实现。
+- Qt 开发依赖保存在 `third_party/qt/`，运行库从 `entry/libs/arm64-v8a/` 链接并随 HAP 分发；PDFium fork 保存在 `third_party/pdfium/source/`，Qt 左侧输入区域已接入其公开 C API 实现正文预览；已完成鸿蒙编译、HAP 打包；系统目录跳转沿用原有实现。
 - DevEco Run 构建前执行 `PrepareNativeDependencies`，按当前 PDFium 源码增量生成 `libpdfium.so`；Qt/NAPI 的 C++ 编译后同步新库到 `libs`。没有保存源码自动构建、应用内动态替换库或保持进程状态的热重载。
 - Qt 工作区默认最大化并保留系统标题栏和窗口边框，输入、输出区域解耦；中部分割线可拖动，悬浮“转化”按钮随分隔线移动。
 - 两侧区域共用 `DocumentView : QStackedWidget`，分别注入 PDF 和 Markdown 渲染器；文件卡片、预览切换、忙碌状态与对外信号集中维护。PDF 继承公共 `RasterDocumentViewport`，复用独立绘图窗口、滚动条和惯性能力；CEF 保留浏览器自身滚动。Word 渲染器尚未接入。本次通用化重构仅完成格式检查，尚未编译、打包或设备验收。
@@ -117,17 +131,16 @@ HuiWenMCP/
 │       ├── markitdown/                已应用业务补丁的第三方 Python 源码及包内资源
 │       └── licenses/markitdown/       MIT 许可与第三方声明
 ├── packaging/                         [部分已有] 各平台打包脚本和配置
-│   ├── ohos/                           [已有] HNP 打包脚本、依赖锁定文件及上游补丁
+│   ├── ohos/                           [已有] 应用级 HNP、业务 pyz 与 HAP 打包／检查
 │   │   └── build_python_bundle.py      生成确定性业务 pyz，不变则保留成品与时间戳
 │   ├── windows/                        [规划] Windows 发布配置
 │   └── macos/                          [规划] macOS 发布配置
 ├── tests/pdf_samples/                 [规划] 文字、双栏、表格等转换样本
 ├── third_party/
-│   ├── markitdown/                   [子模块] MarkItDown fork
-│   ├── pdfium/                       [子模块] PDFium fork 与鸿蒙构建补丁
-│   ├── markdown/                     [已有] 离线 Markdown 页面源码与依赖锁定
-│   ├── portone-docx/                 [子模块] PortOne DOCX 编辑器 fork，暂未接入页面
-│   ├── word/                         [已有] Word 离线库入口与锁文件，每次 Run 构建到 rawfile/word
+│   ├── markitdown/                   [主仓库] 兼容补丁与说明，source/ 为 fork 子模块
+│   ├── pdfium/                       [主仓库] 鸿蒙构建适配，source/ 为 fork 子模块
+│   ├── markdown/                     [主仓库] 页面／样式／构建适配，source/ 为 MD 核心子模块
+│   ├── word/                         [主仓库] 库入口／构建适配，source/ 为 PortOne 子模块
 │   ├── cef/                          [已有] CEF 适配与说明，SDK 由固定依赖包准备
 │   ├── prebuilt/                     [已有] Qt/CEF 固定依赖清单与准备说明
 │   └── qt/                           [本机依赖] Qt 头文件、CMake 配置及宿主工具
@@ -150,7 +163,7 @@ QPA 在进程内只启动一次 Qt 主循环，CEF 引擎也保留到应用退�
 
 文件选择链为 `DocumentView::cardActivated → ConversionWindow::selectDocument() → SandboxService → QtBridge → QtWorkspaceAbility → DocumentStore`。Qt 请求进入 ArkTS 线程处理；结果经 NAPI 投递到 Qt 线程，不跨线程直接操作界面。新 Ability 使用自己的 Context，首页关闭后文件选择仍可继续。DocumentStore 只保留 Picker、URI 授权打开及关闭；目录、时间戳、命名、最近使用和缓存规则由通用 C++ `SandboxStore` 负责；鸿蒙授权 fd 复制与适配由 `HarmonySandbox` 负责。
 
-仓库中的 `third_party/markitdown` 固定源码版本，**不会把整个第三方 Git 仓库装进应用**。`pack_python_hnp.sh` 只部署 Python 解释器、目标依赖及其原生 `.so` 和自检脚本；`build_python_bundle.py` 把 `markitdown/`、`huiwen_converter/`、固定转换入口及许可材料装入独立 `.pyz`，应用 `markitdown-no-magika.patch`，不修改子模块源码。两个产物随同一个 HAP 分发；NAPI、Qt 应用和最小 Qt 运行库仍按原有方式部署。
+仓库中的 `third_party/markitdown/source` 固定源码版本，**不会把整个第三方 Git 仓库装进应用**。`pack_python_hnp.sh` 只部署 Python 解释器、目标依赖及其原生 `.so` 和自检脚本；`build_python_bundle.py` 把 `markitdown/`、`huiwen_converter/`、固定转换入口及许可材料装入独立 `.pyz`，应用 `third_party/markitdown/patches/no-magika.patch`，不修改子模块源码。两个产物随同一个 HAP 分发；NAPI、Qt 应用和最小 Qt 运行库仍按原有方式部署。
 
 `EntryAbility` 和 `QtWorkspaceAbility` 在启动期调用 `configurePython(resourceManager, cacheDir)`。C++ 只读取固定的 `rawfile/python/huiwen_converter.pyz`，通过系统 ResourceManager 取出字节，以 SHA-256 命名保存到 `<应用 cacheDir>/huiwen-python/<sha256>.pyz`；缓存字节相同时不重写，缺失或内容不符时先写临时文件再替换。旧任务持有的旧版本文件不会在初始化新包时被覆盖，缓存可随应用缓存一起清理。
 
@@ -344,7 +357,7 @@ Qt/CEF `.so`、头文件、CMake 配置、宿主工具和浏览器核心资源�
 维护者准备或升级 Qt SDK 时，仍可导入同一套鸿蒙 Qt 5.15.12 开发文件和五个运行库：
 
 ```sh
-python3 packaging/ohos/prepare_qt.py \
+python3 third_party/qt/prepare.py \
   --source /绝对路径/Qt5.15.12-ohos17-arm64-v8a \
   --license-source /对应的/qtbase源码目录
 ```
@@ -356,8 +369,8 @@ python3 packaging/ohos/prepare_qt.py \
 PDFium fork 为 `xristosstarnetgames439-del/pdfium` 的 `huiwen-dev` 分支，首次同步提交记录官方源码 SHA；主项目固定子模块提交。首次构建会准备 DEPS 锁定的 Git 依赖、GN 和 Clang，之后由 Ninja 增量编译当前工作树，不重置用户的源码修改：
 
 ```sh
-git submodule update --init third_party/pdfium
-python3 packaging/ohos/build_pdfium.py --sync
+git submodule update --init third_party/pdfium/source
+python3 third_party/pdfium/build.py --sync
 ```
 
 脚本使用鸿蒙 NDK sysroot、归档器和链接驱动，生成 `aarch64-linux-ohos` 动态库；内部 libc++ 静态链接，关闭 V8、XFA、Skia 和 PartitionAlloc，保留公开渲染、编辑及保存接口。通过 ELF 架构、必要导出和动态依赖检查后，原子更新 `entry/libs/arm64-v8a/libpdfium.so`，同时生成源码/构建参数/校验值记录及分发许可材料。构建失败不会覆盖有效旧库，但会阻止新 HAP 生成。可设置 `OHOS_NDK_HOME` 指向 `native/`。
@@ -381,14 +394,14 @@ Python HNP 的运行时路径仍按下文配置，本次 Qt/CEF 自动准备不�
 ```sh
 git clone --recurse-submodules https://github.com/xristosstarnetgames439-del/HuiwenMCP.git HuiWenMCP
 cd HuiWenMCP
-git submodule status third_party/markitdown
+git submodule status third_party/markitdown/source
 ```
 
 已经克隆了主仓库的开发者，在仓库根目录补拉子模块：
 
 ```sh
-git submodule update --init third_party/markitdown
-git submodule status third_party/markitdown
+git submodule update --init third_party/markitdown/source
+git submodule status third_party/markitdown/source
 ```
 
 再取得鸿蒙 arm64 Python 3.14 的已解压安装目录，要求包含 `bin/python3` 和 `lib/python3.14/site-packages/`。原有自检使用 [Harmonybrew 的预编译 Python 3.14.6](https://github.com/Harmonybrew/ohos-python/releases/tag/3.14.6) 通过。在被 Git 忽略的 `local.properties` 中配置本机路径：

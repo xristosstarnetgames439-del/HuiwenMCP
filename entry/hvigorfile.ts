@@ -13,16 +13,27 @@ const prepareNativeDependenciesPlugin = {
       postDependencies: ['default@ConfigureCmake', 'default@ProcessLibs', 'default@CompileResource'],
       run: (context: any) => {
         const projectRoot = path.resolve(context.modulePath.toString(), '..');
+        const sources = [
+          'third_party/pdfium/source/public/fpdfview.h',
+          'third_party/markitdown/source/packages/markitdown/src/markitdown/__init__.py',
+          'third_party/markdown/source/aliases.mjs',
+          'third_party/word/source/src/index.ts'
+        ];
+        const missing = sources.filter((name) => !fs.existsSync(path.join(projectRoot, name)));
+        if (missing.length) {
+          throw new Error(`缺少第三方源码：${missing.join(', ')}。请在项目根目录执行：` +
+            'git submodule sync --recursive && git submodule update --init --recursive');
+        }
         const propertiesFile = path.join(projectRoot, 'local.properties');
         const properties = fs.existsSync(propertiesFile) ? fs.readFileSync(propertiesFile, 'utf8') : '';
         const pythonSetting =
           process.env.HOST_PYTHON ?? properties.match(/^\s*python\.host\.path\s*=\s*(.+)$/m)?.[1].trim() ?? 'python3';
         const python = pythonSetting.includes(path.sep) ? path.resolve(projectRoot, pythonSetting) : pythonSetting;
-        execFileSync(python, [path.join(projectRoot, 'packaging/ohos/prepare_prebuilt.py')], {
+        execFileSync(python, [path.join(projectRoot, 'third_party/prebuilt/prepare.py')], {
           cwd: projectRoot,
           stdio: 'inherit'
         });
-        execFileSync(python, [path.join(projectRoot, 'packaging/ohos/build_pdfium.py')], {
+        execFileSync(python, [path.join(projectRoot, 'third_party/pdfium/build.py')], {
           cwd: projectRoot,
           stdio: 'inherit'
         });
@@ -41,11 +52,11 @@ const prepareMarkdownResourcesPlugin = {
       postDependencies: ['default@ConfigureCmake', 'default@CompileResource', 'default@PackageHap'],
       run: (context: any) => {
         const projectRoot = path.resolve(context.modulePath.toString(), '..');
-        execFileSync(process.execPath, [path.join(projectRoot, 'packaging/ohos/build_markdown.mjs')], {
+        execFileSync(process.execPath, [path.join(projectRoot, 'third_party/markdown/build.mjs')], {
           cwd: projectRoot,
           stdio: 'inherit'
         });
-        execFileSync(process.execPath, [path.join(projectRoot, 'packaging/ohos/build_word.mjs')], {
+        execFileSync(process.execPath, [path.join(projectRoot, 'third_party/word/build.mjs')], {
           cwd: projectRoot,
           stdio: 'inherit'
         });
@@ -59,7 +70,7 @@ const prepareMarkdownResourcesPlugin = {
           cwd: projectRoot,
           stdio: 'inherit'
         });
-        execFileSync(python, [path.join(projectRoot, 'packaging/ohos/prepare_cef_preview.py')], {
+        execFileSync(python, [path.join(projectRoot, 'third_party/cef/prepare_preview.py')], {
           cwd: projectRoot,
           stdio: 'inherit'
         });

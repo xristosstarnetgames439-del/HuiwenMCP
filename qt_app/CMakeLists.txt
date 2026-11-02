@@ -32,7 +32,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "OHOS")
     # 使用迁入的预编译 CEF/adapter；只编译公开 C++ 包装层，不重编浏览器和 Qt 本体。
     set(CEF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cef/sdk")
     if(NOT EXISTS "${CEF_ROOT}/include/cef_app.h")
-        message(FATAL_ERROR "缺少项目内 CEF 环境，请先运行 packaging/ohos/prepare_cef.py")
+        message(FATAL_ERROR "缺少项目内 CEF 环境，请先运行 third_party/cef/prepare.py")
     endif()
     list(APPEND CMAKE_MODULE_PATH "${CEF_ROOT}/cmake")
     find_package(CEF REQUIRED)
@@ -80,5 +80,5 @@ endif()
 add_library(huiwen_pdfium SHARED IMPORTED)
 set_target_properties(huiwen_pdfium PROPERTIES
     IMPORTED_LOCATION "${PDFIUM_LIBRARY}"
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/pdfium/public")
+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/pdfium/source/public")
 target_link_libraries(huiwen_qt PRIVATE Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Concurrent huiwen_pdfium)

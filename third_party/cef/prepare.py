@@ -4,11 +4,13 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import sys
 import re
 import subprocess
 
-from build_pdfium import native_sdk
-from prepare_qt import ROOT, copy_changed
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from third_party.pdfium.build import native_sdk
+from third_party.qt.prepare import ROOT, copy_changed
 
 CEF = ROOT / "third_party/cef"
 SDK = CEF / "sdk"
@@ -133,7 +135,7 @@ def prepare(source):
                 "adapter_c": "Copied stripped prebuilt library; not rebuilt from migrated sources"}
     (SDK / "files.json").write_text(json.dumps(files, ensure_ascii=False, indent=2) + "\n")
     (CEF / "environment.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n")
-    from prepare_cef_preview import prepare as prepare_preview
+    from third_party.cef.prepare_preview import prepare as prepare_preview
     prepare_preview()
     print(f"[HUIWEN_CEF] 迁入 {len(files)} 个文件；SDK：{SDK}；运行库：{LIBS}")
 

@@ -16,9 +16,8 @@
 /third_party/qt/sdk.json
 # 通达迁入的 CEF 环境是本地依赖；版本清单、说明和准备脚本进入 Git。
 /third_party/cef/sdk/
-# Markdown 发布包和官方源码快照在本机准备，Git 保存版本锁及说明。
+# Markdown 构建工具本机准备，核心源码由 source 子模块管理。
 /third_party/markdown/node_modules/
-/third_party/markdown/sources/
 # Markdown Web 资源每次 Run 生成，随 HAP 分发，不进入 Git。
 /entry/src/main/resources/rawfile/markdown/
 # Word 编辑器依赖本机还原，离线资源每次 Run 生成。
@@ -42,6 +41,7 @@ __pycache__/
 *.pyc
 # 覆盖本机全局忽略规则，保留鸿蒙打包脚本源码。
 !/packaging/ohos/
+!/third_party/pdfium/ohos/
 /.idea
 **/build
 /.hvigor

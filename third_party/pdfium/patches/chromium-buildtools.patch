@@ -1,0 +1,13 @@
+diff --git a/third_party/libc++/__config_site b/third_party/libc++/__config_site
+index a9ab161..33a6ed1 100644
+--- a/third_party/libc++/__config_site
++++ b/third_party/libc++/__config_site
+@@ -26,7 +26,7 @@
+ #define _LIBCPP_HAS_MONOTONIC_CLOCK 1
+ #define _LIBCPP_HAS_TERMINAL 1
+
+-#ifdef ANDROID_HOST_MUSL
++#if defined(ANDROID_HOST_MUSL) || defined(__OHOS__)
+ #define _LIBCPP_HAS_MUSL_LIBC 1
+ #else
+ #define _LIBCPP_HAS_MUSL_LIBC 0
