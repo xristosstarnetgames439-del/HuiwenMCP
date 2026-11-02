@@ -7,8 +7,14 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 export struct HomeTitleBar {
   @State private barHeight: number = 37;
   @State private buttonsWidth: number = 160;
+  @State private expanded: boolean = false;
   private mainWindow: window.Window | undefined = undefined;
   private active: boolean = false;
+  private onStatusChanged = (status: window.WindowStatusType): void => {
+    // 全屏与最大化共用品牌标识，普通窗口恢复应用图标。
+    this.expanded = status === window.WindowStatusType.FULL_SCREEN ||
+      status === window.WindowStatusType.MAXIMIZE;
+  };
   private onButtonsChanged = (rect: window.TitleButtonRect): void => {
     // TitleButtonRect 使用 vp，right 是相对于窗口右上角的边界距离。
     this.buttonsWidth = Math.max(0, rect.right) + rect.width;
@@ -25,6 +31,8 @@ export struct HomeTitleBar {
         return;
       }
       this.mainWindow = mainWindow;
+      mainWindow.on('windowStatusChange', this.onStatusChanged);
+      this.onStatusChanged(mainWindow.getWindowStatus());
       this.onButtonsChanged(mainWindow.getTitleButtonRect());
       mainWindow.on('windowTitleButtonRectChange', this.onButtonsChanged);
     }).catch((error: Error) => this.reportError(error));
@@ -33,6 +41,7 @@ export struct HomeTitleBar {
   aboutToDisappear(): void {
     this.active = false;
     try {
+      this.mainWindow?.off('windowStatusChange', this.onStatusChanged);
       this.mainWindow?.off('windowTitleButtonRectChange', this.onButtonsChanged);
     } catch (error) {
       this.reportError(error as Error);
@@ -65,11 +74,24 @@ export struct HomeTitleBar {
   build() {
     Row() {
       Row({ space: 8 }) {
-        Image($r('app.media.app_icon'))
-          .width(20)
-          .height(20)
-          .objectFit(ImageFit.Contain)
-          .draggable(false)
+        if (this.expanded) {
+          // 使用透明 SVG 原色，不随深色模式改色。
+          Image($r('app.media.harmonyos_logo'))
+            .width(108)
+            .height(20)
+            .objectFit(ImageFit.Contain)
+            .draggable(false)
+          Text('X')
+            .fontSize(16)
+            .fontColor($r('app.color.home_text'))
+            .margin({ left: 8, right: 8 })
+        } else {
+          Image($r('app.media.app_icon'))
+            .width(20)
+            .height(20)
+            .objectFit(ImageFit.Contain)
+            .draggable(false)
+        }
         Text($r('app.string.app_name'))
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
