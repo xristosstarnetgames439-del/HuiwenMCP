@@ -259,6 +259,9 @@ struct HomePage {
       }
       .width('100%')
       .height('100%')
+      // 标题栏下方的内容按顶部圆角裁剪，缺口沿用窗口透明背景。
+      .borderRadius({ topLeft: 24, topRight: 24, bottomLeft: 0, bottomRight: 0 })
+      .clip(true)
       if (this.menuOpen) {
         // 背景点击层关闭两级菜单，面板阻止命中其下方的背景层。
         Stack({ alignContent: Alignment.BottomStart }) {
