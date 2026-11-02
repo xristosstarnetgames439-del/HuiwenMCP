@@ -1,6 +1,7 @@
 // 首页自绘标题区：仅绘制图标和名称，右侧三键继续由鸿蒙系统承载。
 import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 @Component
@@ -53,6 +54,24 @@ export struct HomeTitleBar {
     hilog.warn(0xFF00, 'HuiwenMCP', 'HUIWEN_HOME_TITLEBAR_FAILED: %{public}s', error.message);
   }
 
+  private async openAboutDevice(): Promise<void> {
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      // 当前 SDK 使用系统设置的页面入口，直接定位到“关于本机”。
+      await context.startAbility({
+        bundleName: 'com.huawei.hmos.settings',
+        abilityName: 'com.huawei.hmos.settings.MainAbility',
+        uri: 'about_device'
+      });
+    } catch (error) {
+      const failure = error as BusinessError;
+      hilog.warn(0xFF00, 'HuiwenMCP',
+        'HUIWEN_HOME_ABOUT_DEVICE_FAILED: code=%{public}d, message=%{public}s',
+        failure.code, failure.message);
+      this.getUIContext().getPromptAction().showToast({ message: '无法打开关于本机，请从系统设置进入' });
+    }
+  }
+
   private async toggleMaximize(): Promise<void> {
     if (!this.mainWindow) {
       return;
@@ -73,14 +92,28 @@ export struct HomeTitleBar {
 
   build() {
     Row() {
-      Row({ space: 8 }) {
-        if (this.expanded) {
+      if (this.expanded) {
+        // 独立点击区不参与右侧标题文字的拖动及双击手势。
+        Button({ type: ButtonType.Normal }) {
           // 使用透明 SVG 原色，不随深色模式改色。
           Image($r('app.media.harmonyos_logo'))
             .width(108)
             .height(20)
             .objectFit(ImageFit.Contain)
             .draggable(false)
+        }
+        // 两侧各扩展 8vp，并回收外边距，保持字标和后续文字的原位置。
+        .width(124)
+        .height('100%')
+        .margin({ left: 8 })
+        .padding({ left: 8, right: 8 })
+        .borderRadius(8)
+        .backgroundColor(Color.Transparent)
+        .accessibilityText('打开关于本机')
+        .onClick(() => this.openAboutDevice())
+      }
+      Row({ space: 8 }) {
+        if (this.expanded) {
           Text('X')
             .fontSize(16)
             .fontColor($r('app.color.home_text'))
@@ -102,7 +135,7 @@ export struct HomeTitleBar {
       }
       .layoutWeight(1)
       .height('100%')
-      .padding({ left: 16, right: 12 })
+      .padding({ left: this.expanded ? 0 : 16, right: 12 })
       .onTouch((event: TouchEvent) => {
         // Move 时再交给系统拖动，避免 Down 就接管导致双击手势失效。
         if (event.type === TouchType.Move) {
