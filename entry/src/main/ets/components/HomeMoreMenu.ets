@@ -14,6 +14,7 @@ export struct HomeMoreMenu {
   @State hoveredItem: string = '';
   onClose: () => void = () => {};
   onAbout: () => void = () => {};
+  onFileManager: () => void = () => {};
   onAppearance: (appearance: HomeAppearance) => void = () => {};
   onPlaceholder: (name: string) => void = () => {};
 
@@ -132,7 +133,7 @@ export struct HomeMoreMenu {
             this.appearanceOpen = !this.appearanceOpen;
           }, true)
           this.menuItem('截图', $r('app.media.menu_capture'), () => this.onPlaceholder('截图'))
-          this.menuItem('文件管理', $r('app.media.menu_folder'), () => this.onPlaceholder('文件管理'))
+          this.menuItem('文件管理', $r('app.media.menu_folder'), () => this.onFileManager())
           this.separator()
           this.menuItem('设置', $r('app.media.menu_settings'), () => this.onPlaceholder('设置'))
         }

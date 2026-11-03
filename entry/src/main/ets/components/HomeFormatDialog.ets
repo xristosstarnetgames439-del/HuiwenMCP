@@ -9,7 +9,8 @@ export enum HomeFeature {
   Preview,
   Edit,
   Convert,
-  Workspaces
+  Workspaces,
+  FileManager
 }
 
 @Component

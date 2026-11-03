@@ -12,6 +12,7 @@ import {
 } from '../services/RecentWorkspaceService';
 import { HomeMoreMenu, HOME_MENU_WIDTH, HOME_MENU_GAP } from '../components/HomeMoreMenu';
 import { HomeAboutDialog } from '../components/HomeAboutDialog';
+import { FileManagerDialog } from '../components/fileManager/FileManagerDialog';
 import { applyHomeAppearance, HomeAppearance } from '../utils/HomeAppearance';
 import { DocumentKind, DocumentMode } from '../utils/DocumentStore';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -157,7 +158,12 @@ struct HomePage {
 
   @Builder
   homeDialogContent() {
-    if (this.activeFeature === HomeFeature.Workspaces) {
+    if (this.activeFeature === HomeFeature.FileManager) {
+      FileManagerDialog({
+        dialogWidth: this.homeDialogWidth,
+        onCloseRequested: () => { this.closeHomeDialog(); }
+      })
+    } else if (this.activeFeature === HomeFeature.Workspaces) {
       RecentWorkspaceDialog({
         dialogWidth: this.homeDialogWidth,
         listHeight: this.workspaceListHeight,
@@ -191,9 +197,9 @@ struct HomePage {
       return;
     }
     this.activeFeature = feature;
-    // 复用同一个弹窗，只为全部工作区扩大背板，并限制列表最多可见十条。
-    this.homeDialogWidth = feature === HomeFeature.Workspaces ?
-      Math.min(720, this.availableWidth - 32) : HOME_FORMAT_DIALOG_WIDTH;
+    // 文件管理与全部工作区复用首页弹窗的打开、关闭流程，背板宽度与内容一致。
+    this.homeDialogWidth = feature === HomeFeature.FileManager ? Math.min(760, this.availableWidth - 32) :
+      feature === HomeFeature.Workspaces ? Math.min(720, this.availableWidth - 32) : HOME_FORMAT_DIALOG_WIDTH;
     this.workspaceListHeight = Math.min(WORKSPACE_PAGE_SIZE * 48 +
       (WORKSPACE_PAGE_SIZE - 1) * 8, Math.max(48, this.availableHeight - 160));
     this.menuOpen = false;
@@ -278,6 +284,10 @@ struct HomePage {
             availableWidth: this.availableWidth - this.menuLeft() - 8,
             onClose: () => this.closeMenu(),
             onAbout: () => this.openAboutDialog(),
+            onFileManager: () => {
+              this.closeMenu();
+              this.selectFeature(HomeFeature.FileManager);
+            },
             onAppearance: (mode: HomeAppearance) => this.changeAppearance(mode),
             onPlaceholder: (name: string) => {
               this.closeMenu();
