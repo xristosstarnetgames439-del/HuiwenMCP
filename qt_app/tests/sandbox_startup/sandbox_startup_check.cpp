@@ -105,6 +105,20 @@ int main(int argc, char *argv[])
                     require(document.inputPath.toStdString() == input.u8string(), "未恢复原 PDF");
                     require(!fs::exists(fs::u8path(document.outputPath.toStdString())),
                             "校验不应生成 Markdown");
+                    const auto files = SandboxStore::listFiles(filesDir);
+                    require(files.size() == 1 && files.first().role == "input" &&
+                                files.first().kind == "pdf" && files.first().sizeBytes == 9,
+                            "文件列表应读取真实输入及大小，不能把预定输出当作已有文件");
+                    const auto output = fs::u8path(document.outputPath.toStdString());
+                    std::ofstream(output, std::ios::binary) << "# title\n";
+                    const auto completed = SandboxStore::listFiles(filesDir);
+                    require(completed.size() == 2 && completed.last().role == "output" &&
+                                completed.last().kind == "md" &&
+                                completed.last().sourceKind == "pdf" &&
+                                completed.last().sizeBytes == 8 &&
+                                completed.first().taskPath == completed.last().taskPath,
+                            "真实输出应独立返回 Markdown 类型，并关联原 PDF 工作区");
+                    fs::remove(output);
                     require(fs::last_write_time(task) == oldTime, "校验不应更新时间");
                     fs::resize_file(input, 0);
                     bool rejected = false;

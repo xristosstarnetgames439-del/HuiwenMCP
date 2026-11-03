@@ -11,6 +11,20 @@ export interface HarmonySandboxDocument {
   lastUsedAt: number;
 }
 
+// 文件管理记录：只返回真实存在且可读的输入／输出文件。
+export interface HarmonySandboxFile {
+  name: string;
+  path: string;
+  role: string;
+  kind: string;
+  taskPath: string;
+  workspaceName: string;
+  mode: string;
+  sourceKind: string;
+  lastUsedAt: number;
+  sizeBytes: number;
+}
+
 interface HuiwenNative {
   ping(): string;
   // 启动期从应用资源部署内置转换 pyz，不接收外部脚本。
@@ -28,6 +42,8 @@ interface HuiwenNative {
     offset?: number): Promise<HarmonySandboxDocument[]>;
   // 读取并校验 PDF/MD 预览或 PDF→MD 任务，Qt 确认载入后才更新使用时间。
   harmonyLoadTask(filesDir: string, taskPath: string): Promise<HarmonySandboxDocument>;
+  // 异步读取文件快照，按工作区最近使用时间降序；查询不更新时间。
+  harmonyListFiles(filesDir: string): Promise<HarmonySandboxFile[]>;
   // 将模式、文档类型与回调一起交给 Qt；回调仍在 ArkTS 线程处理系统操作。
   registerWorkspace(callback: (event: string) => void, mode: string, kind: string): void;
   clearWorkspace(): void;

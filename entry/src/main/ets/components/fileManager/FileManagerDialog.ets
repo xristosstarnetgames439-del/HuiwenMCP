@@ -1,12 +1,15 @@
 // 文件管理弹窗：组合左右区域，负责分类状态和关闭入口。
 import { FileManagerSidebar } from './FileManagerSidebar';
 import { FileManagerContent } from './FileManagerContent';
+import { FileManagerFile } from '../../models/FileManagerFile';
 
 @Component
 export struct FileManagerDialog {
   @Prop dialogWidth: number = 760;
   @State selectedCategory: string = '全部';
   onCloseRequested: () => void = () => {};
+  // TODO：由调用方按 file.role / file.kind 接入打开行为，本轮仅展示文件。
+  onOpenFile: (file: FileManagerFile) => void = () => {};
 
   build() {
     Stack({ alignContent: Alignment.TopEnd }) {
@@ -16,7 +19,9 @@ export struct FileManagerDialog {
           onSelect: (category: string) => { this.selectedCategory = category; }
         })
           .flexShrink(0)
-        FileManagerContent({ selectedCategory: this.selectedCategory })
+        FileManagerContent({
+          title: this.selectedCategory, selectedCategory: this.selectedCategory, onOpen: this.onOpenFile
+        })
           .layoutWeight(1)
       }
       .width('100%')

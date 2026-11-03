@@ -1,6 +1,7 @@
 /* 通用沙箱目录规则：三类归档、最近任务与使用时间，不依赖鸿蒙 UI。 */
 #pragma once
 #include "DocumentItem.h"
+#include "SandboxFile.h"
 #include <QVector>
 
 class SandboxStore
@@ -13,6 +14,8 @@ class SandboxStore
     static QVector<DocumentItem> recentDocuments(const QString &filesDir,
                                                  const QString &mode = "all", int limit = 20,
                                                  int offset = 0);
+    // 一次读取真实输入输出文件快照，按工作区最近使用时间排序，不更新时间。
+    static QVector<SandboxFile> listFiles(const QString &filesDir);
     // 重新校验 PDF/MD 预览或 PDF→MD 任务，不创建目录或更新时间。
     static DocumentItem loadTask(const QString &filesDir, const QString &taskPath);
     // 路径可以是任务目录或其中的文件；读取列表本身不更新时间。

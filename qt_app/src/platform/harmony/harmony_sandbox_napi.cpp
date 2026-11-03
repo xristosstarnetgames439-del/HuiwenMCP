@@ -1,4 +1,4 @@
-/* 鸿蒙沙箱 NAPI：异步导入、最近任务查询与恢复，提供文件及目录路径校验。 */
+/* 鸿蒙沙箱 NAPI：异步导入、最近任务／真实文件查询与恢复，提供文件及目录路径校验。 */
 #include "harmony_sandbox.h"
 #ifdef Q_OS_OPENHARMONY
 #include "sandbox/SandboxStore.h"
@@ -15,6 +15,7 @@ enum class Operation
 {
     Import,
     Recent,
+    Files,
     LoadTask
 };
 
@@ -32,6 +33,7 @@ struct SandboxWork
     int offset = 0;
     HarmonySandboxDocument document;
     QVector<DocumentItem> documents;
+    QVector<SandboxFile> files;
     std::string error;
 
     ~SandboxWork()
@@ -81,6 +83,25 @@ napi_value documentValue(napi_env env, const DocumentItem &document)
     return result;
 }
 
+napi_value fileValue(napi_env env, const SandboxFile &file)
+{
+    napi_value result, timestamp, size;
+    napi_create_object(env, &result);
+    napi_set_named_property(env, result, "name", stringValue(env, file.name));
+    napi_set_named_property(env, result, "path", stringValue(env, file.path));
+    napi_set_named_property(env, result, "role", stringValue(env, file.role));
+    napi_set_named_property(env, result, "kind", stringValue(env, file.kind));
+    napi_set_named_property(env, result, "taskPath", stringValue(env, file.taskPath));
+    napi_set_named_property(env, result, "workspaceName", stringValue(env, file.workspaceName));
+    napi_set_named_property(env, result, "mode", stringValue(env, file.mode));
+    napi_set_named_property(env, result, "sourceKind", stringValue(env, file.sourceKind));
+    napi_create_double(env, static_cast<double>(file.lastUsedAt), &timestamp);
+    napi_set_named_property(env, result, "lastUsedAt", timestamp);
+    napi_create_double(env, static_cast<double>(file.sizeBytes), &size);
+    napi_set_named_property(env, result, "sizeBytes", size);
+    return result;
+}
+
 void reject(napi_env env, napi_deferred deferred, const std::string &message)
 {
     napi_value error;
@@ -100,6 +121,8 @@ void execute(napi_env, void *data)
         else if (task->operation == Operation::Recent)
             task->documents =
                 SandboxStore::recentDocuments(task->root, task->mode, task->limit, task->offset);
+        else if (task->operation == Operation::Files)
+            task->files = SandboxStore::listFiles(task->root);
         else
             task->document = SandboxStore::loadTask(task->root, task->name);
     }
@@ -117,6 +140,12 @@ void complete(napi_env env, napi_status status, void *data)
         napi_value result;
         if (task->operation == Operation::Import || task->operation == Operation::LoadTask)
             result = documentValue(env, task->document);
+        else if (task->operation == Operation::Files)
+        {
+            napi_create_array_with_length(env, task->files.size(), &result);
+            for (int index = 0; index < task->files.size(); ++index)
+                napi_set_element(env, result, index, fileValue(env, task->files[index]));
+        }
         else
         {
             napi_create_array_with_length(env, task->documents.size(), &result);
@@ -204,6 +233,22 @@ napi_value recentDocuments(napi_env env, napi_callback_info info)
     return queue(env, std::move(task));
 }
 
+// 文件管理只读快照：后台扫描一次，不复用最近任务分页，也不触发恢复或转换。
+napi_value listFiles(napi_env env, napi_callback_info info)
+{
+    size_t count = 1;
+    napi_value values[1];
+    auto task = std::make_unique<SandboxWork>();
+    if (napi_get_cb_info(env, info, &count, values, nullptr, nullptr) != napi_ok || count != 1 ||
+        !readString(env, values[0], task->root))
+    {
+        napi_throw_type_error(env, "HARMONY_SANDBOX_INVALID_ARGUMENT", "文件查询需要应用沙箱目录");
+        return nullptr;
+    }
+    task->operation = Operation::Files;
+    return queue(env, std::move(task));
+}
+
 napi_value loadTask(napi_env env, napi_callback_info info)
 {
     size_t count = 2;
@@ -264,13 +309,16 @@ napi_value validateTaskDirectory(napi_env env, napi_callback_info info)
 void InitHarmonySandbox(napi_env env, napi_value exports)
 {
     napi_property_descriptor methods[] = {
-        {"harmonyImportDocument", nullptr, importDocument, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"harmonyValidateOutput", nullptr, validateOutput, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"harmonyImportDocument", nullptr, importDocument, nullptr, nullptr, nullptr, napi_default,
+         nullptr},
+        {"harmonyValidateOutput", nullptr, validateOutput, nullptr, nullptr, nullptr, napi_default,
+         nullptr},
         {"harmonyValidateTaskDirectory", nullptr, validateTaskDirectory, nullptr, nullptr, nullptr,
          napi_default, nullptr},
-        {"harmonyRecentDocuments", nullptr, recentDocuments, nullptr, nullptr, nullptr, napi_default,
-         nullptr},
+        {"harmonyRecentDocuments", nullptr, recentDocuments, nullptr, nullptr, nullptr,
+         napi_default, nullptr},
         {"harmonyLoadTask", nullptr, loadTask, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"harmonyListFiles", nullptr, listFiles, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(methods) / sizeof(methods[0]), methods);
 }

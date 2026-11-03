@@ -246,6 +246,65 @@ QVector<DocumentItem> SandboxStore::recentDocuments(const QString &filesDir, con
     return offset >= documents.size() ? QVector<DocumentItem>{} : documents.mid(offset, limit);
 }
 
+QVector<SandboxFile> SandboxStore::listFiles(const QString &filesDir)
+{
+    const QString root = rootPath(filesDir);
+    QVector<SandboxFile> result;
+    for (const QString &mode : {QString("preview"), QString("edit"), QString("convert")})
+    {
+        const QString category = root + "/" + mode;
+        if (QFileInfo(category).isSymLink() || QFileInfo(category).canonicalFilePath() != category)
+            continue;
+        const auto tasks = QDir(category).entryInfoList(
+            QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks, QDir::Name);
+        for (const QFileInfo &task : tasks)
+        {
+            if (!validTaskName(task.fileName()) ||
+                task.canonicalFilePath() != task.absoluteFilePath())
+                continue;
+            QString sourceKind;
+            for (const QString &role : {QString("input"), QString("output")})
+            {
+                if (mode == "preview" && role == "output")
+                    continue;
+                const QString directory = mode == "preview" ? task.absoluteFilePath()
+                                                            : task.absoluteFilePath() + "/" + role;
+                const QFileInfo directoryInfo(directory);
+                if (directoryInfo.isSymLink() || directoryInfo.canonicalFilePath() != directory)
+                    continue;
+                const auto files =
+                    QDir(directory).entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Name);
+                for (const QFileInfo &file : files)
+                {
+                    const QString kind = kindOf(file.fileName());
+                    if (kind.isEmpty() || !file.isReadable() ||
+                        file.canonicalFilePath() != file.absoluteFilePath())
+                        continue;
+                    if (role == "input" && sourceKind.isEmpty())
+                        sourceKind = kind;
+                    SandboxFile item;
+                    item.name = file.fileName();
+                    item.path = file.absoluteFilePath();
+                    item.role = role;
+                    item.kind = kind;
+                    item.taskPath = task.absoluteFilePath();
+                    item.workspaceName = task.fileName();
+                    item.mode = mode;
+                    item.sourceKind = sourceKind;
+                    item.lastUsedAt = task.lastModified().toMSecsSinceEpoch();
+                    item.sizeBytes = file.size();
+                    result.push_back(item);
+                }
+            }
+        }
+    }
+    // 时间相同时用实际路径稳定排序，避免同次输入输出在刷新时交换位置。
+    std::sort(result.begin(), result.end(), [](const SandboxFile &a, const SandboxFile &b) {
+        return a.lastUsedAt == b.lastUsedAt ? a.path < b.path : a.lastUsedAt > b.lastUsedAt;
+    });
+    return result;
+}
+
 void SandboxStore::markUsed(const QString &filesDir, const QString &path)
 {
     const QString task = checkedTask(rootPath(filesDir), path);
