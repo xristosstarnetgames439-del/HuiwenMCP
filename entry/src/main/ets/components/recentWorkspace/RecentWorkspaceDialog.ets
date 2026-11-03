@@ -1,7 +1,7 @@
 // 全部工作区：复用首页行和弹窗壳，每批读取十条，List 只创建可见行及少量缓存。
 import { common } from '@kit.AbilityKit';
-import { listRecentWorkspaces, RecentWorkspace, WORKSPACE_PAGE_SIZE } from '../services/RecentWorkspaceService';
-import { HomeDialog } from './HomeDialog';
+import { listRecentWorkspaces, RecentWorkspace, WORKSPACE_PAGE_SIZE } from '../../services/RecentWorkspaceService';
+import { HomeDialog } from '../common/HomeDialog';
 import { RecentWorkspaceRow } from './RecentWorkspaceRow';
 
 class WorkspaceDataSource implements IDataSource {

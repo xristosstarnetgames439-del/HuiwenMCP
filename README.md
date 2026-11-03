@@ -54,10 +54,30 @@ HuiWenMCP/
 │   │   │   ├── abilitystage/QtAbilityStage.ets [已有] Qt 平台初始化
 │   │   │   ├── entryability/EntryAbility.ets  [已有] ArkTS 启动入口
 │   │   │   ├── entryability/QtWorkspaceAbility.ets [已有] Qt 窗口及系统文件操作
-│   │   │   ├── components/FunctionSidebar.ets [已有] 首页半透明窄栏与底部菜单按钮
-│   │   │   ├── components/HomeFeatureCard.ets [已有] 正方形功能卡片与 SVG 图标
-│   │   │   ├── components/HomeFormatDialog.ets [已有] 独立格式选择子窗口与 PDF→MD 跳转事件
-│   │   │   ├── components/RecentWorkspaceList.ets [已有] 固定列、文件名中部省略与最近记录点击
+│   │   │   ├── components/            [已有] 按功能组织的 ArkTS 组件
+│   │   │   │   ├── common/            共用组件
+│   │   │   │   │   └── HomeDialog.ets 弹窗内容壳
+│   │   │   │   ├── home/              首页组件
+│   │   │   │   │   ├── HomeTitleBar.ets      自绘标题区与系统三键留位
+│   │   │   │   │   ├── FunctionSidebar.ets   半透明窄栏与底部菜单按钮
+│   │   │   │   │   ├── HomeMoreMenu.ets      更多菜单与外观切换
+│   │   │   │   │   ├── HomeAboutDialog.ets   关于弹窗
+│   │   │   │   │   ├── HomeFeatureCard.ets   功能卡片与 SVG 图标
+│   │   │   │   │   └── HomeFormatDialog.ets 格式选择与工作区跳转事件
+│   │   │   │   ├── recentWorkspace/   最近工作区组件
+│   │   │   │   │   ├── RecentWorkspaceList.ets   首页最近列表
+│   │   │   │   │   ├── RecentWorkspaceRow.ets    共用工作区行
+│   │   │   │   │   └── RecentWorkspaceDialog.ets 全部工作区弹窗
+│   │   │   │   └── fileManager/       文件管理组件
+│   │   │   │       ├── FileManagerDialog.ets  可缩放弹窗与左右组件组合
+│   │   │   │       ├── FileManagerSidebar.ets 分类导航
+│   │   │   │       ├── FileManagerContent.ets 标题与列表协调
+│   │   │   │       ├── header/
+│   │   │   │       │   └── FileManagerHeader.ets 标题与搜索
+│   │   │   │       └── list/
+│   │   │   │           ├── FileManagerList.ets  分组懒加载列表
+│   │   │   │           ├── FileManagerItem.ets  文件行与左右键操作
+│   │   │   │           └── FileTimeGrouping.ets 时间分组与文案
 │   │   │   ├── pages/HomePage.ets      [已有] 首页功能切换与 Qt 窗口交接
 │   │   │   ├── pages/Index.ets         [已有] QPA 固定加载的 Qt XComponent 承载页
 │   │   │   ├── services/ConversionService.ets [已有] 页面调用原生转换的统一入口

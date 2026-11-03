@@ -1,17 +1,17 @@
 // ArkTS 首页独立于 QPA 固定加载的 Index 承载页，负责功能入口和窗口交接。
 import { bundleManager, common } from '@kit.AbilityKit';
-import { FunctionSidebar } from '../components/FunctionSidebar';
-import { HomeTitleBar } from '../components/HomeTitleBar';
-import { HomeFeatureCard } from '../components/HomeFeatureCard';
-import { RecentWorkspaceList } from '../components/RecentWorkspaceList';
-import { RecentWorkspaceDialog } from '../components/RecentWorkspaceDialog';
-import { HOME_FORMAT_DIALOG_WIDTH, HomeFeature, HomeFormatDialog } from '../components/HomeFormatDialog';
+import { FunctionSidebar } from '../components/home/FunctionSidebar';
+import { HomeTitleBar } from '../components/home/HomeTitleBar';
+import { HomeFeatureCard } from '../components/home/HomeFeatureCard';
+import { RecentWorkspaceList } from '../components/recentWorkspace/RecentWorkspaceList';
+import { RecentWorkspaceDialog } from '../components/recentWorkspace/RecentWorkspaceDialog';
+import { HOME_FORMAT_DIALOG_WIDTH, HomeFeature, HomeFormatDialog } from '../components/home/HomeFormatDialog';
 import { getNativeStatus } from '../services/ConversionService';
 import {
   listRecentWorkspaces, RecentWorkspace, WORKSPACE_PAGE_SIZE
 } from '../services/RecentWorkspaceService';
-import { HomeMoreMenu, HOME_MENU_WIDTH, HOME_MENU_GAP } from '../components/HomeMoreMenu';
-import { HomeAboutDialog } from '../components/HomeAboutDialog';
+import { HomeMoreMenu, HOME_MENU_WIDTH, HOME_MENU_GAP } from '../components/home/HomeMoreMenu';
+import { HomeAboutDialog } from '../components/home/HomeAboutDialog';
 import { FileManagerDialog } from '../components/fileManager/FileManagerDialog';
 import { FileManagerFile } from '../models/FileManagerFile';
 import { openFileDirectory } from '../services/FileManagerService';

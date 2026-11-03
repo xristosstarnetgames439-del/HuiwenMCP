@@ -1,5 +1,5 @@
 // 首页和全部工作区共用一行：固定图标、格式与时间，文件名占据剩余空间。
-import { RecentWorkspace } from '../services/RecentWorkspaceService';
+import { RecentWorkspace } from '../../services/RecentWorkspaceService';
 
 @Component
 export struct RecentWorkspaceRow {

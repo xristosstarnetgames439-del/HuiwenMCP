@@ -1,6 +1,6 @@
 import { KeyCode } from '@kit.InputKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { HomeAppearance } from '../utils/HomeAppearance';
+import { HomeAppearance } from '../../utils/HomeAppearance';
 
 export const HOME_MENU_WIDTH: number = 160;
 export const HOME_APPEARANCE_WIDTH: number = 152;

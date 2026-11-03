@@ -1,6 +1,6 @@
 // 格式弹窗内容：与系统背板共用固定宽度，背景、圆角和阴影由外层统一绘制。
-import { DocumentKind } from '../utils/DocumentStore';
-import { HomeDialog } from './HomeDialog';
+import { DocumentKind } from '../../utils/DocumentStore';
+import { HomeDialog } from '../common/HomeDialog';
 
 export const HOME_FORMAT_DIALOG_WIDTH: number = 360;
 

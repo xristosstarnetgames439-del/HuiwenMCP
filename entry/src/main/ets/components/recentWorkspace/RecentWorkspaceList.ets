@@ -1,5 +1,5 @@
 // 最近工作区只负责展示；图标、格式、时间固定宽度，文件名单独占满剩余空间。
-import { RecentWorkspace } from '../services/RecentWorkspaceService';
+import { RecentWorkspace } from '../../services/RecentWorkspaceService';
 import { RecentWorkspaceRow } from './RecentWorkspaceRow';
 
 @Component
