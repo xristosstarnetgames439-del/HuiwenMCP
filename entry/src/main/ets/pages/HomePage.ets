@@ -1,5 +1,5 @@
 // ArkTS 首页独立于 QPA 固定加载的 Index 承载页，负责功能入口和窗口交接。
-import { bundleManager, common } from '@kit.AbilityKit';
+import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit';
 import { FunctionSidebar } from '../components/home/FunctionSidebar';
 import { HomeTitleBar } from '../components/home/HomeTitleBar';
 import { HomeFeatureCard } from '../components/home/HomeFeatureCard';
@@ -157,6 +157,24 @@ struct HomePage {
     }
   }
 
+  private async takeScreenshot(): Promise<void> {
+    this.closeMenu();
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      // 截图授权在首页完成，Qt 只负责框选和标注，不依赖 QtOhExtras。
+      const permissions: Permissions[] = ['ohos.permission.CUSTOM_SCREEN_CAPTURE'];
+      const result = await abilityAccessCtrl.createAtManager().requestPermissionsFromUser(context, permissions);
+      if (result.authResults.length === 0 ||
+        result.authResults[0] !== abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED) {
+        throw new Error('未获得屏幕截图权限');
+      }
+      await context.startAbility({ bundleName: 'cn.com.HuiWenMCP', abilityName: 'QtScreenshotAbility' });
+    } catch (error) {
+      hilog.error(0xFF00, 'HuiwenMCP', 'HUIWEN_SCREENSHOT_START_FAILED: %{public}s', (error as Error).message);
+      this.getUIContext().getPromptAction().showToast({ message: `截图启动失败：${(error as Error).message}` });
+    }
+  }
+
   private closeHomeDialog(): boolean {
     if (this.homeDialogId < 0) {
       return true;
@@ -311,6 +329,7 @@ struct HomePage {
               this.closeMenu();
               this.selectFeature(HomeFeature.FileManager);
             },
+            onScreenshot: () => this.takeScreenshot(),
             onAppearance: (mode: HomeAppearance) => this.changeAppearance(mode),
             onPlaceholder: (name: string) => {
               this.closeMenu();

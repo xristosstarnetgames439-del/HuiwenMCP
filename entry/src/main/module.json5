@@ -18,7 +18,13 @@
       { "name": "ohos.permission.INTERNET" },
       { "name": "ohos.permission.GET_NETWORK_INFO" },
       // 首页窗口容器透明，让半透明侧栏显示桌面或后方窗口。
-      { "name": "ohos.permission.SET_WINDOW_TRANSPARENT" }
+      { "name": "ohos.permission.SET_WINDOW_TRANSPARENT" },
+      // 首页请求用户授权，独立 Qt 截图窗口负责抓屏。
+      {
+        "name": "ohos.permission.CUSTOM_SCREEN_CAPTURE",
+        "reason": "$string:screenshot_permission_reason",
+        "usedScene": { "abilities": ["EntryAbility", "QtScreenshotAbility"], "when": "inuse" }
+      }
     ],
     // 随 entry HAP 安装的私有 Python 运行时，仅供本应用调用。
     "hnpPackages": [
@@ -31,8 +37,19 @@
         "type": "private"
       }
     ],
-    // 首页、Qt 工作区及各自启动页统一使用汇文应用图标。
+    // 首页与文档工作区使用应用图标；截图宿主使用透明启动页。
     "abilities": [
+      {
+        "name": "QtScreenshotAbility",
+        "srcEntry": "./ets/entryability/QtScreenshotAbility.ets",
+        "launchType": "singleton",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:app_icon",
+        "label": "$string:EntryAbility_label",
+        "startWindowIcon": "$media:screenshot_start_icon",
+        "startWindowBackground": "$color:screenshot_start_background",
+        "exported": false
+      },
       {
         "name": "QtWorkspaceAbility",
         "srcEntry": "./ets/entryability/QtWorkspaceAbility.ets",

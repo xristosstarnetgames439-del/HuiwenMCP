@@ -1,6 +1,10 @@
 {
   "string": [
     {
+      "name": "screenshot_permission_reason",
+      "value": "用于选择屏幕区域、标注并保存截图"
+    },
+    {
       "name": "module_desc",
       "value": "汇文MCP 文档转换模块"
     },

@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/huiwen/screenshot">
+        <file>toolbar_normal.png</file>
+        <file>toolbar_hover.png</file>
+        <file>toolbar_color.png</file>
+    </qresource>
+</RCC>

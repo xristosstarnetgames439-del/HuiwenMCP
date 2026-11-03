@@ -70,9 +70,9 @@ napi_value Register(napi_env env, napi_callback_info info)
     const QString mode = ReadOption(env, arguments[1]);
     const QString kind = ReadOption(env, arguments[2]);
     if (!((mode == "preview" && (kind == "pdf" || kind == "md" || kind == "word")) ||
-          (mode == "convert" && kind == "pdf")))
+          (mode == "convert" && kind == "pdf") || (mode == "screenshot" && kind.isEmpty())))
     {
-        napi_throw_type_error(env, nullptr, "工作区仅支持 PDF/MD/DOCX 预览和 PDF 转 MD");
+        napi_throw_type_error(env, nullptr, "Qt 会话仅支持文档预览、PDF 转 MD 和截图");
         return nullptr;
     }
     Clear(env, info);

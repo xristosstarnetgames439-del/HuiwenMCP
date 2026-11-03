@@ -1,6 +1,10 @@
 {
   "color": [
     {
+      "name": "screenshot_start_background",
+      "value": "#00000000"
+    },
+    {
       "name": "start_window_background",
       "value": "#FFFFFF"
     },

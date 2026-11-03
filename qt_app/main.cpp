@@ -7,6 +7,7 @@
 #ifdef Q_OS_OPENHARMONY
 #include "documentView/renderers/web/CefDocumentPreviewWidget.h"
 #include "platform/harmony/qt_bridge.h"
+#include "screenshot/ScreenCapture.h"
 #include <QPointer>
 #include <memory>
 #endif
@@ -43,6 +44,18 @@ int main(int argc, char *argv[])
         {
             // 复用现有工作区类，只按 ArkTS 的模式、文档类型改变内部栏数和渲染器。
             const auto options = QtBridge::workspaceOptions();
+            if (options.value("mode").toString() == "screenshot")
+            {
+                // 截图与文档工作区共用 Qt 线程，不创建转换页或 CEF 浏览器。
+                ScreenCapture::getInstance()->startCapture(
+                    false, [id](bool ok, const QString &path, const QString &error) {
+                        if (id == QtBridge::workspaceId())
+                            QtBridge::instance().request(
+                                "screenshotFinished",
+                                QJsonObject{{"path", path}, {"error", error}, {"ok", ok}});
+                    });
+                return;
+            }
             window = std::make_unique<ConversionWindow>(options.value("mode").toString(),
                                                         options.value("kind").toString());
             window->showMaximized();

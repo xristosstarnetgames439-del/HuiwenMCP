@@ -44,7 +44,8 @@ interface HuiwenNative {
   harmonyLoadTask(filesDir: string, taskPath: string): Promise<HarmonySandboxDocument>;
   // 异步读取文件快照，按工作区最近使用时间降序；查询不更新时间。
   harmonyListFiles(filesDir: string): Promise<HarmonySandboxFile[]>;
-  // 将模式、文档类型与回调一起交给 Qt；回调仍在 ArkTS 线程处理系统操作。
+  // 将模式、文档类型与回调一起交给 Qt；截图使用 screenshot 模式和空 kind。
+  // 回调仍在 ArkTS 线程处理系统操作。
   registerWorkspace(callback: (event: string) => void, mode: string, kind: string): void;
   clearWorkspace(): void;
   workspaceReply(result: string): void;

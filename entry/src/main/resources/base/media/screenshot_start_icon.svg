@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1" viewBox="0 0 1 1">
+  <!-- 截图宿主使用透明启动图，避免应用图标闪入截图准备画面。 -->
+  <rect width="1" height="1" fill="#000000" fill-opacity="0"/>
+</svg>

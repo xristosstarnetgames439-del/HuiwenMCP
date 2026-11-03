@@ -31,6 +31,17 @@ set(workspace_sources
     src/sandbox/SandboxService.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "OHOS")
     add_library(huiwen_qt SHARED ${workspace_sources})
+    # 截图只接入鸿蒙，复用原工具栏 UI 与系统输入法／剪贴板。
+    set_target_properties(huiwen_qt PROPERTIES AUTOUIC ON)
+    target_sources(huiwen_qt PRIVATE
+        src/screenshot/ScreenCapture.cpp
+        src/screenshot/CaptureToolbar.cpp
+        src/screenshot/CaptureToolbar.ui
+        src/screenshot/CaptureAmplifier.cpp
+        src/screenshot/HarmonyImeInput.cpp
+        src/screenshot/resources/screenshot.qrc)
+    target_link_libraries(huiwen_qt PRIVATE
+        pasteboard udmf pixelmap ohfileuri ohinput ohinputmethod native_display_manager)
     # 使用迁入的预编译 CEF/adapter；只编译公开 C++ 包装层，不重编浏览器和 Qt 本体。
     set(CEF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cef/sdk")
     if(NOT EXISTS "${CEF_ROOT}/include/cef_app.h")

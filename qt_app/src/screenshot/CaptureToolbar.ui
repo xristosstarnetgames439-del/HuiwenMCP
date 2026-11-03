@@ -1,0 +1,815 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CaptureToolbar</class>
+ <widget class="QWidget" name="CaptureToolbar">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>306</width>
+    <height>56</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>汇文截图工具栏</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true"/>
+  </property>
+  <widget class="QWidget" name="widTool" native="true">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>306</width>
+     <height>28</height>
+    </rect>
+   </property>
+   <property name="styleSheet">
+    <string notr="true"/>
+   </property>
+   <widget class="QCheckBox" name="chkRectangle">
+    <property name="geometry">
+     <rect>
+      <x>17</x>
+      <y>4</y>
+      <width>20</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">#chkRectangle::indicator{
+	width: 20px;
+	height: 20px;
+}
+
+#chkRectangle::indicator::unchecked{
+	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 269 4 17 ;
+}
+
+#chkRectangle::indicator::unchecked:hover{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 269 4 17 ;
+}
+
+#chkRectangle::indicator::checked{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 269 4 17 ;
+}
+
+#chkRectangle::indicator::checked:hover{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 269 4 17 ;
+}</string>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QCheckBox" name="chkEllipse">
+    <property name="geometry">
+     <rect>
+      <x>51</x>
+      <y>4</y>
+      <width>20</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">#chkEllipse::indicator{
+	width: 20px;
+	height: 20px;
+}
+
+#chkEllipse::indicator::unchecked{
+	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 235 4 51 ;
+}
+
+#chkEllipse::indicator::unchecked:hover{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 235 4 51 ;
+}
+
+#chkEllipse::indicator::checked{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 235 4 51 ;
+}
+
+#chkEllipse::indicator::checked:hover{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 235 4 51 ;
+}</string>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QCheckBox" name="chkArrow">
+    <property name="geometry">
+     <rect>
+      <x>85</x>
+      <y>4</y>
+      <width>20</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">#chkArrow::indicator{
+	width: 20px;
+	height: 20px;
+}
+
+#chkArrow::indicator::unchecked{
+	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 201 4 85 ;
+}
+
+#chkArrow::indicator::unchecked:hover{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 201 4 85 ;
+}
+
+#chkArrow::indicator::checked{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 201 4 85 ;
+}
+
+#chkArrow::indicator::checked:hover{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 201 4 85 ;
+}</string>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btnUndo">
+    <property name="geometry">
+     <rect>
+      <x>158</x>
+      <y>4</y>
+      <width>20</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">#btnUndo{
+	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 128 4 158 ;
+}
+
+#btnUndo:hover{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 128 4 158 ;
+}
+
+#btnUndo:pressed{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 128 4 158 ;
+}</string>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+    <property name="flat">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QCheckBox" name="chkText">
+    <property name="geometry">
+     <rect>
+      <x>119</x>
+      <y>4</y>
+      <width>20</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">#chkText::indicator{
+	width: 20px;
+	height: 20px;
+}
+
+#chkText::indicator::unchecked{
+	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 167 4 119 ;
+}
+
+#chkText::indicator::unchecked:hover{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 167 4 119 ;
+}
+
+#chkText::indicator::checked{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 167 4 119 ;
+}
+
+#chkText::indicator::checked:hover{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 167 4 119 ;
+}</string>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btnQuit">
+    <property name="geometry">
+     <rect>
+      <x>230</x>
+      <y>4</y>
+      <width>20</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">#btnQuit{
+	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 56 4 230 ;
+}
+
+#btnQuit:hover{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 56 4 230 ;
+}
+
+#btnQuit:pressed{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 56 4 230 ;
+}</string>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btnFinish">
+    <property name="geometry">
+     <rect>
+      <x>266</x>
+      <y>4</y>
+      <width>20</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">#btnFinish{
+	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 20 4 266 ;
+}
+
+#btnFinish:hover{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 20 4 266 ;
+}
+
+#btnFinish:pressed{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 20 4 266 ;
+}</string>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btnSave">
+    <property name="geometry">
+     <rect>
+      <x>192</x>
+      <y>4</y>
+      <width>20</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>20</width>
+      <height>20</height>
+     </size>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">#btnSave{
+	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 94 4 192 ;
+}
+
+#btnSave:hover{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 94 4 192 ;
+}
+
+#btnSave:pressed{
+	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 94 4 192 ;
+}</string>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+  </widget>
+  <widget class="QWidget" name="widToolColor" native="true">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>28</y>
+     <width>306</width>
+     <height>28</height>
+    </rect>
+   </property>
+   <property name="styleSheet">
+    <string notr="true">QRadioButton::indicator {
+   width: 8px;
+   height: 8px;
+}
+
+QRadioButton::indicator::unchecked {
+	border: 0;
+}
+
+QRadioButton::indicator:unchecked:hover {
+	border: 0;
+}
+
+QRadioButton::indicator:unchecked:pressed {
+	border: 0;
+}
+
+QRadioButton::indicator::checked {
+	border: 0;
+}
+
+QRadioButton::indicator:checked:hover {
+	border: 0;
+}
+
+QRadioButton::indicator:checked:pressed {
+	border: 0;
+}</string>
+   </property>
+   <widget class="QPushButton" name="btnFont">
+    <property name="geometry">
+     <rect>
+      <x>54</x>
+      <y>6</y>
+      <width>96</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+    <property name="flat">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor1">
+    <property name="geometry">
+     <rect>
+      <x>202</x>
+      <y>4</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor2">
+    <property name="geometry">
+     <rect>
+      <x>214</x>
+      <y>4</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor3">
+    <property name="geometry">
+     <rect>
+      <x>226</x>
+      <y>4</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+    <property name="iconSize">
+     <size>
+      <width>0</width>
+      <height>0</height>
+     </size>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor6">
+    <property name="geometry">
+     <rect>
+      <x>262</x>
+      <y>4</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor7">
+    <property name="geometry">
+     <rect>
+      <x>274</x>
+      <y>4</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor8">
+    <property name="geometry">
+     <rect>
+      <x>202</x>
+      <y>16</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor9">
+    <property name="geometry">
+     <rect>
+      <x>214</x>
+      <y>16</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor10">
+    <property name="geometry">
+     <rect>
+      <x>226</x>
+      <y>16</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor11">
+    <property name="geometry">
+     <rect>
+      <x>238</x>
+      <y>16</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor12">
+    <property name="geometry">
+     <rect>
+      <x>250</x>
+      <y>16</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor13">
+    <property name="geometry">
+     <rect>
+      <x>262</x>
+      <y>16</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor4">
+    <property name="geometry">
+     <rect>
+      <x>238</x>
+      <y>4</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor5">
+    <property name="geometry">
+     <rect>
+      <x>250</x>
+      <y>4</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radColor14">
+    <property name="geometry">
+     <rect>
+      <x>274</x>
+      <y>16</y>
+      <width>8</width>
+      <height>8</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>8</width>
+      <height>8</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QLabel" name="labColor">
+    <property name="geometry">
+     <rect>
+      <x>174</x>
+      <y>6</y>
+      <width>16</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>16</width>
+      <height>16</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>16</width>
+      <height>16</height>
+     </size>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
