@@ -55,6 +55,19 @@ export default class EntryAbility extends UIAbility {
       }
       try {
         const mainWindow = windowStage.getMainWindowSync();
+        const uiContext = mainWindow.getUIContext();
+        // 窗口限制使用 px，按首页密度换算 880 × 680vp；不限制最大尺寸。
+        mainWindow.setWindowLimits({
+          minWidth: Math.round(uiContext.vp2px(880)),
+          minHeight: Math.round(uiContext.vp2px(680))
+        }).catch((error: BusinessError) => {
+          hilog.warn(this.domain, this.tag, 'HUIWEN_HOME_LIMITS_FAILED: %{public}s', error.message);
+        });
+      } catch (error) {
+        hilog.warn(this.domain, this.tag, 'HUIWEN_HOME_LIMITS_FAILED: %{public}s', (error as Error).message);
+      }
+      try {
+        const mainWindow = windowStage.getMainWindowSync();
         // 只隐藏系统图标和名称，保留原生三键；标题区拖动和双击由组件处理。
         mainWindow.setWindowTitleMoveEnabled(false);
         mainWindow.setWindowDecorVisible(false);
