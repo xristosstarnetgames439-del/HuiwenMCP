@@ -15,6 +15,7 @@ export struct FileManagerContent {
   @State loading: boolean = false;
   @State error: string = '';
   onOpen: (file: FileManagerFile) => void = () => {};
+  onOpenWorkspace: (file: FileManagerFile) => void = () => {};
   private files: FileManagerFile[] = [];
   private active: boolean = false;
   private snapshotTime: number = Date.now();
@@ -67,7 +68,7 @@ export struct FileManagerContent {
       })
       FileManagerList({
         entries: this.entries, loading: this.loading, error: this.error,
-        onRetry: () => this.loadFiles(), onOpen: this.onOpen
+        onRetry: () => this.loadFiles(), onOpen: this.onOpen, onOpenWorkspace: this.onOpenWorkspace
       })
         .layoutWeight(1)
     }

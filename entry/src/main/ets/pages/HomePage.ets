@@ -13,6 +13,8 @@ import {
 import { HomeMoreMenu, HOME_MENU_WIDTH, HOME_MENU_GAP } from '../components/HomeMoreMenu';
 import { HomeAboutDialog } from '../components/HomeAboutDialog';
 import { FileManagerDialog } from '../components/fileManager/FileManagerDialog';
+import { FileManagerFile } from '../models/FileManagerFile';
+import { openFileDirectory } from '../services/FileManagerService';
 import { applyHomeAppearance, HomeAppearance } from '../utils/HomeAppearance';
 import { DocumentKind, DocumentMode } from '../utils/DocumentStore';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -142,6 +144,19 @@ struct HomePage {
     }
   }
 
+  private async openFileLocation(file: FileManagerFile): Promise<void> {
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      await openFileDirectory(context, file);
+    } catch (error) {
+      hilog.warn(0xFF00, 'HuiwenMCP', '打开文件目录失败：%{public}s', (error as Error).message);
+      // 只在文件管理仍打开时提示，避免关闭弹窗后把目录错误带回首页。
+      if (this.homeVisible && this.homeDialogId >= 0 && this.activeFeature === HomeFeature.FileManager) {
+        this.getUIContext().getPromptAction().showToast({ message: `打开文件目录失败：${(error as Error).message}` });
+      }
+    }
+  }
+
   private closeHomeDialog(): boolean {
     if (this.homeDialogId < 0) {
       return true;
@@ -161,7 +176,10 @@ struct HomePage {
     if (this.activeFeature === HomeFeature.FileManager) {
       FileManagerDialog({
         dialogWidth: this.homeDialogWidth,
-        onCloseRequested: () => { this.closeHomeDialog(); }
+        onCloseRequested: () => { this.closeHomeDialog(); },
+        onOpenFile: (file: FileManagerFile) => this.openFileLocation(file),
+        onOpenWorkspace: (file: FileManagerFile) =>
+          this.openWorkspace(file.taskPath, file.mode, file.sourceKind || file.kind)
       })
     } else if (this.activeFeature === HomeFeature.Workspaces) {
       RecentWorkspaceDialog({
@@ -212,7 +230,8 @@ struct HomePage {
           this.homeDialogContent();
         },
         alignment: DialogAlignment.Center,
-        showInSubWindow: true,
+        // 文件管理在主窗口内承载，避免子窗口内的系统右键菜单被拒绝显示。
+        showInSubWindow: feature !== HomeFeature.FileManager,
         // PromptAction 的独立子窗口不能同时启用模态。
         isModal: false,
         autoCancel: true,

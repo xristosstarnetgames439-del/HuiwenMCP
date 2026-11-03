@@ -36,6 +36,7 @@ export struct FileManagerList {
   @Prop error: string = '';
   onRetry: () => void = () => {};
   onOpen: (file: FileManagerFile) => void = () => {};
+  onOpenWorkspace: (file: FileManagerFile) => void = () => {};
   private dataSource: FileListDataSource = new FileListDataSource();
   private scroller: Scroller = new Scroller();
 
@@ -62,7 +63,8 @@ export struct FileManagerList {
             } else {
               Column() {
                 FileManagerItem({
-                  file: entry.file as FileManagerFile, timeLabel: entry.timeLabel, onOpen: this.onOpen
+                  file: entry.file as FileManagerFile, timeLabel: entry.timeLabel,
+                  onOpen: this.onOpen, onOpenWorkspace: this.onOpenWorkspace
                 })
                 Divider().color($r('app.color.home_border')).strokeWidth(1)
               }

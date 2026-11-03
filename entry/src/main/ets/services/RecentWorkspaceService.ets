@@ -35,6 +35,13 @@ function formatLabel(document: HarmonySandboxDocument): string {
   return document.mode === 'edit' ? '编辑模式' : '预览模式';
 }
 
+// 首页和文件管理共用支持规则；DOC 仍由工作区静默转换后预览。
+export function canOpenWorkspace(mode: string, kind: string, name: string): boolean {
+  return (mode === 'convert' && kind === 'pdf') ||
+    (mode === 'preview' && (kind === 'pdf' || kind === 'md' ||
+      (kind === 'word' && (name.toLowerCase().endsWith('.doc') || name.toLowerCase().endsWith('.docx')))));
+}
+
 export async function listRecentWorkspaces(context: common.UIAbilityContext,
   limit: number = DEFAULT_RECENT_WORKSPACE_LIMIT, offset: number = 0): Promise<RecentWorkspace[]> {
   const documents = await getRecentDocuments(context, limit, 'all', offset);
@@ -46,11 +53,7 @@ export async function listRecentWorkspaces(context: common.UIAbilityContext,
       kind: document.kind,
       formatLabel: formatLabel(document),
       timeLabel: formatTime(document.lastUsedAt),
-      // DOC 恢复后由工作区静默转换；渲染器仍只接收 DOCX。
-      canOpen: (document.mode === 'convert' && document.kind === 'pdf') ||
-        (document.mode === 'preview' && (document.kind === 'pdf' || document.kind === 'md' ||
-          (document.kind === 'word' && (document.name.toLowerCase().endsWith('.doc') ||
-            document.name.toLowerCase().endsWith('.docx')))))
+      canOpen: canOpenWorkspace(document.mode, document.kind, document.name)
     };
   });
 }

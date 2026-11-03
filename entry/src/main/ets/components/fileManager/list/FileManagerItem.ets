@@ -1,17 +1,29 @@
-// 单个文件行：只按传入 kind 显示图标；点击回传含 role、kind、path 的完整文件对象。
+// 单个文件行：左键定位目录，右键菜单请求打开所属工作区；两种事件均回传完整文件对象。
 import { FileManagerFile } from '../../../models/FileManagerFile';
+import { canOpenWorkspace } from '../../../services/RecentWorkspaceService';
 
 @Component
 export struct FileManagerItem {
   @Prop file: FileManagerFile;
   @Prop timeLabel: string = '';
   onOpen: (file: FileManagerFile) => void = () => {};
+  onOpenWorkspace: (file: FileManagerFile) => void = () => {};
 
   private fileIcon(): Resource {
     if (this.file.kind === 'word') {
       return $r('app.media.home_format_word');
     }
     return this.file.kind === 'pdf' ? $r('app.media.home_format_pdf') : $r('app.media.home_format_md');
+  }
+
+  @Builder
+  workspaceMenu() {
+    Menu() {
+      MenuItem({ content: '打开最近工作区' })
+        // 输出 MD 的工作区类型取原始输入类型，不按该行的 MD 类型启动 Qt。
+        .enabled(canOpenWorkspace(this.file.mode, this.file.sourceKind || this.file.kind, this.file.name))
+        .onClick(() => this.onOpenWorkspace(this.file))
+    }
   }
 
   build() {
@@ -64,5 +76,6 @@ export struct FileManagerItem {
     .borderRadius(8)
     .accessibilityText(`${this.file.name}，${this.file.role === 'input' ? '输入文件' : '输出文件'}，${this.timeLabel}，${this.file.sizeLabel}`)
     .onClick(() => this.onOpen(this.file))
+    .bindContextMenu(this.workspaceMenu, ResponseType.RightClick)
   }
 }

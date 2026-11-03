@@ -8,8 +8,9 @@ export struct FileManagerDialog {
   @Prop dialogWidth: number = 760;
   @State selectedCategory: string = '全部';
   onCloseRequested: () => void = () => {};
-  // TODO：由调用方按 file.role / file.kind 接入打开行为，本轮仅展示文件。
+  // 目录定位与工作区恢复分开传递，组件不直接操作系统窗口或任务时间。
   onOpenFile: (file: FileManagerFile) => void = () => {};
+  onOpenWorkspace: (file: FileManagerFile) => void = () => {};
 
   build() {
     Stack({ alignContent: Alignment.TopEnd }) {
@@ -20,7 +21,8 @@ export struct FileManagerDialog {
         })
           .flexShrink(0)
         FileManagerContent({
-          title: this.selectedCategory, selectedCategory: this.selectedCategory, onOpen: this.onOpenFile
+          title: this.selectedCategory, selectedCategory: this.selectedCategory,
+          onOpen: this.onOpenFile, onOpenWorkspace: this.onOpenWorkspace
         })
           .layoutWeight(1)
       }

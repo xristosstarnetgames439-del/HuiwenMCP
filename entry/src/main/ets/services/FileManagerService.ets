@@ -1,5 +1,6 @@
 // 文件管理数据入口：只读一次沙箱快照，分类与搜索复用内存结果。
-import { common } from '@kit.AbilityKit';
+import { common, OpenLinkOptions } from '@kit.AbilityKit';
+import { fileUri } from '@kit.CoreFileKit';
 import nativeBridge, { HarmonySandboxFile } from 'libhuiwen_native.so';
 import { FileManagerFile } from '../models/FileManagerFile';
 
@@ -51,4 +52,14 @@ export function filterFileManagerFiles(files: FileManagerFile[], category: strin
       (category === 'Markdown' && file.kind === 'md');
     return matchesCategory && file.name.toLowerCase().includes(query);
   });
+}
+
+// 左键只定位所在目录：复用沙箱目录校验，不恢复任务或修改最近使用时间。
+export async function openFileDirectory(context: common.UIAbilityContext, file: FileManagerFile): Promise<void> {
+  const directory = nativeBridge.harmonyValidateTaskDirectory(
+    context.getApplicationContext().filesDir, file.path.substring(0, file.path.lastIndexOf('/')));
+  const options: OpenLinkOptions = {
+    parameters: { fileUri: fileUri.getUriFromPath(directory) }
+  };
+  await context.openLink('filemanager://openDirectory', options);
 }
