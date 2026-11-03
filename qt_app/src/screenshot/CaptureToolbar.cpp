@@ -44,14 +44,14 @@ void FontPopup::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, false);
-    p.fillRect(rect(), QColor(0xba, 0xba, 0xbc));
+    p.fillRect(rect(), Qt::white);
     const int count = static_cast<int>(sizeof(vecFont) / sizeof(vecFont[0]));
     for (int i = 0; i < count; ++i)
     {
         const QRect itemRect(0, i * kItemHeight, width(), kItemHeight);
         if (i == pressedIdx_ || i == hoveredIdx_)
-            p.fillRect(itemRect, QColor(0x27, 0x86, 0xff));
-        p.setPen(Qt::white);
+            p.fillRect(itemRect, QColor(0xf0, 0xf1, 0xf3));
+        p.setPen(QColor(0x17, 0x17, 0x17));
         p.drawText(itemRect.adjusted(8, 0, -8, 0), Qt::AlignVCenter | Qt::AlignLeft,
                    QString("%1pt").arg(vecFont[i]));
     }
@@ -159,16 +159,15 @@ CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent), ui(new Ui::Ca
     ui->widToolColor->setStyleSheet(QStringLiteral(
         "#widToolColor{background:transparent;background-image:none;border-image:none;}"
         "QRadioButton::indicator{width:16px;height:16px;border:0;"
-        "background:transparent;background-image:none;border-image:none;}"));
+        "background:transparent;background-image:none;border-image:none;}"
+        "QPushButton{color:#171717;background:transparent;border:0;font-size:24px;}"
+        "QPushButton:hover{background:#F0F1F3;border-radius:6px;}"));
     ui->widTool->installEventFilter(this);
     ui->widToolColor->installEventFilter(this);
     // 按钮已隐藏并手动绘制，需开启鼠标跟踪以在 MouseMove 中维护悬停状态
     ui->widTool->setMouseTracking(true);
 
-    const QList<QAbstractButton *> toolButtons = {ui->chkRectangle, ui->chkEllipse, ui->chkArrow,
-                                                  ui->chkText,      ui->btnUndo,    ui->btnSave,
-                                                  ui->btnQuit,      ui->btnFinish};
-    for (QAbstractButton *button : toolButtons)
+    for (QAbstractButton *button : toolButtons())
     {
         button->hide();
         button->setFocusPolicy(Qt::NoFocus);
@@ -205,6 +204,7 @@ CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent), ui(new Ui::Ca
         button->setFocusPolicy(Qt::NoFocus);
     }
     ui->labColor->setStyleSheet(QString("background-color:%1;").arg(vecColor[9]));
+    ui->radColor10->setChecked(true);
     ui->btnFont->setText(QString("%1pt").arg(vecFont[3]));
     ui->btnFont->setFocusPolicy(Qt::NoFocus);
     connect(ui->btnFont, SIGNAL(clicked()), this, SLOT(onClickFont()));
@@ -321,6 +321,7 @@ void CaptureToolbar::onText(int state)
 void CaptureToolbar::onChangeColor(int colorIdx)
 {
     ui->labColor->setStyleSheet(QString("background-color:%1;").arg(vecColor[colorIdx]));
+    ui->widToolColor->update();
     emit changeColor(colorIdx);
 }
 
@@ -382,32 +383,32 @@ QList<QAbstractButton *> CaptureToolbar::toolButtons() const
             ui->btnUndo,      ui->btnSave,    ui->btnQuit,  ui->btnFinish};
 }
 
-// widTool 绘制：从工具图标精灵图中按按钮状态绘制 normal/hover 图标
+// 自绘 SVG 的透明缓存只加载一次；当前 Qt 不分发 QtSvg，无需新增运行库。
 bool CaptureToolbar::onToolPaint()
 {
-    static const QImage normal(QStringLiteral(":/huiwen/screenshot/toolbar_normal.png"));
-    static const QImage hover(QStringLiteral(":/huiwen/screenshot/toolbar_hover.png"));
-    struct ToolIcon
-    {
-        QAbstractButton *button;
-        int sourceX;
-    };
-    const ToolIcon icons[] = {{ui->chkRectangle, 17}, {ui->chkEllipse, 51}, {ui->chkArrow, 85},
-                              {ui->chkText, 119},     {ui->btnUndo, 158},   {ui->btnSave, 192},
-                              {ui->btnQuit, 230},     {ui->btnFinish, 266}};
-
+    static const QImage icons(QStringLiteral(":/huiwen/screenshot/icons/toolbar.png"));
     QPainter painter(ui->widTool);
-    painter.fillRect(ui->widTool->rect(), QColor(0, 0, 0, 140));
-    for (const ToolIcon &icon : icons)
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(Qt::white);
+    painter.drawRoundedRect(ui->widTool->rect(), 8, 8);
+    const auto buttons = toolButtons();
+    const int cellSize = icons.height();
+    const int iconSize = 14 * kToolbarScale;
+    for (int i = 0; i < buttons.size(); ++i)
     {
         // 按钮已隐藏，underMouse() 恒为 false；用 MouseMove 维护的 m_hoveredButton 判断悬停
-        const QImage &sprite =
-            (icon.button->isChecked() || icon.button->isDown() || icon.button == m_hoveredButton)
-                ? hover
-                : normal;
-        painter.drawImage(QRect(icon.sourceX * kToolbarScale, 4 * kToolbarScale, 20 * kToolbarScale,
-                                20 * kToolbarScale),
-                          sprite, QRect(icon.sourceX, 4, 20, 20));
+        const auto *button = buttons[i];
+        const QRect area = button->geometry();
+        if (button->isChecked() || button->isDown() || button == m_hoveredButton)
+        {
+            painter.setBrush(QColor(0xf0, 0xf1, 0xf3));
+            painter.drawRoundedRect(area, 6, 6);
+        }
+        const QRect iconRect(area.x() + (area.width() - iconSize) / 2,
+                             area.y() + (area.height() - iconSize) / 2, iconSize, iconSize);
+        painter.drawImage(iconRect, icons, QRect(i * cellSize, 0, cellSize, cellSize));
     }
     return true;
 }
@@ -434,9 +435,24 @@ bool CaptureToolbar::onToolButtonRelease(QEvent *event)
 // widToolColor 绘制：颜色条
 bool CaptureToolbar::onColorPaint()
 {
-    static const QImage colorBar(QStringLiteral(":/huiwen/screenshot/toolbar_color.png"));
     QPainter painter(ui->widToolColor);
-    painter.drawImage(ui->widToolColor->rect(), colorBar, colorBar.rect());
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(Qt::white);
+    painter.drawRoundedRect(ui->widToolColor->rect(), 8, 8);
+    // 色块与实际按钮共用几何位置，不再依赖旧 PNG 的像素坐标。
+    const auto colors = ui->widToolColor->findChildren<QAbstractButton *>();
+    for (QAbstractButton *button : colors)
+    {
+        if (button == ui->btnFont)
+            continue;
+        const int index = button->group()->id(button);
+        painter.setPen(
+            QPen(button->isChecked() ? QColor(0x39, 0x83, 0xf7) : QColor(0xd9, 0xdc, 0xe1),
+                 button->isChecked() ? 2 : 1));
+        painter.setBrush(QColor(vecColor[index]));
+        painter.drawRoundedRect(button->geometry().adjusted(1, 1, -1, -1), 2, 2);
+    }
     return true;
 }
 
@@ -478,7 +494,7 @@ bool CaptureToolbar::eventFilter(QObject *watched, QEvent *event)
     const bool onTool = (watched == ui->widTool);
     const bool onColor = (watched == ui->widToolColor);
 
-    // widTool Paint：工具图标精灵
+    // widTool Paint：白色工具条、选中态与图标
     if (onTool && type == QEvent::Paint)
         return onToolPaint();
     // widToolColor Paint：颜色条

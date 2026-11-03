@@ -49,28 +49,6 @@
       <height>20</height>
      </size>
     </property>
-    <property name="styleSheet">
-     <string notr="true">#chkRectangle::indicator{
-	width: 20px;
-	height: 20px;
-}
-
-#chkRectangle::indicator::unchecked{
-	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 269 4 17 ;
-}
-
-#chkRectangle::indicator::unchecked:hover{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 269 4 17 ;
-}
-
-#chkRectangle::indicator::checked{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 269 4 17 ;
-}
-
-#chkRectangle::indicator::checked:hover{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 269 4 17 ;
-}</string>
-    </property>
     <property name="text">
      <string/>
     </property>
@@ -95,28 +73,6 @@
       <width>20</width>
       <height>20</height>
      </size>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">#chkEllipse::indicator{
-	width: 20px;
-	height: 20px;
-}
-
-#chkEllipse::indicator::unchecked{
-	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 235 4 51 ;
-}
-
-#chkEllipse::indicator::unchecked:hover{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 235 4 51 ;
-}
-
-#chkEllipse::indicator::checked{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 235 4 51 ;
-}
-
-#chkEllipse::indicator::checked:hover{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 235 4 51 ;
-}</string>
     </property>
     <property name="text">
      <string/>
@@ -143,28 +99,6 @@
       <height>20</height>
      </size>
     </property>
-    <property name="styleSheet">
-     <string notr="true">#chkArrow::indicator{
-	width: 20px;
-	height: 20px;
-}
-
-#chkArrow::indicator::unchecked{
-	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 201 4 85 ;
-}
-
-#chkArrow::indicator::unchecked:hover{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 201 4 85 ;
-}
-
-#chkArrow::indicator::checked{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 201 4 85 ;
-}
-
-#chkArrow::indicator::checked:hover{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 201 4 85 ;
-}</string>
-    </property>
     <property name="text">
      <string/>
     </property>
@@ -189,19 +123,6 @@
       <width>20</width>
       <height>20</height>
      </size>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">#btnUndo{
-	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 128 4 158 ;
-}
-
-#btnUndo:hover{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 128 4 158 ;
-}
-
-#btnUndo:pressed{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 128 4 158 ;
-}</string>
     </property>
     <property name="text">
      <string/>
@@ -231,28 +152,6 @@
       <height>20</height>
      </size>
     </property>
-    <property name="styleSheet">
-     <string notr="true">#chkText::indicator{
-	width: 20px;
-	height: 20px;
-}
-
-#chkText::indicator::unchecked{
-	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 167 4 119 ;
-}
-
-#chkText::indicator::unchecked:hover{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 167 4 119 ;
-}
-
-#chkText::indicator::checked{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 167 4 119 ;
-}
-
-#chkText::indicator::checked:hover{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 167 4 119 ;
-}</string>
-    </property>
     <property name="text">
      <string/>
     </property>
@@ -277,19 +176,6 @@
       <width>20</width>
       <height>20</height>
      </size>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">#btnQuit{
-	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 56 4 230 ;
-}
-
-#btnQuit:hover{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 56 4 230 ;
-}
-
-#btnQuit:pressed{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 56 4 230 ;
-}</string>
     </property>
     <property name="text">
      <string/>
@@ -316,19 +202,6 @@
       <height>20</height>
      </size>
     </property>
-    <property name="styleSheet">
-     <string notr="true">#btnFinish{
-	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 20 4 266 ;
-}
-
-#btnFinish:hover{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 20 4 266 ;
-}
-
-#btnFinish:pressed{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 20 4 266 ;
-}</string>
-    </property>
     <property name="text">
      <string/>
     </property>
@@ -353,19 +226,6 @@
       <width>20</width>
       <height>20</height>
      </size>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">#btnSave{
-	border-image: url(:/huiwen/screenshot/toolbar_normal.png) 4 94 4 192 ;
-}
-
-#btnSave:hover{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 94 4 192 ;
-}
-
-#btnSave:pressed{
-	border-image: url(:/huiwen/screenshot/toolbar_hover.png) 4 94 4 192 ;
-}</string>
     </property>
     <property name="text">
      <string/>

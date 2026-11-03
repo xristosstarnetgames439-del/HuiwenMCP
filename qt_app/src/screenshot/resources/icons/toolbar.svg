@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 汇文自绘截图图标，顺序：矩形、椭圆、箭头、文字、撤销、保存、退出、完成（复制）。
+     toolbar.png 是本文件的 4 倍透明绘制缓存，供未部署 QtSvg 的 Qt 使用。
+     修改源图后导出：cairosvg toolbar.svg -o toolbar.png -s 4 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="24" viewBox="0 0 192 24">
+  <g fill="none" stroke="#171717" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <g id="rectangle">
+      <rect x="5" y="5" width="14" height="14" rx="1"/>
+    </g>
+    <g id="ellipse" transform="translate(24 0)">
+      <ellipse cx="12" cy="12" rx="8" ry="6.5"/>
+    </g>
+    <g id="arrow" transform="translate(48 0)">
+      <path d="M5 19 19 5M9 5h10v10"/>
+    </g>
+    <g id="text" transform="translate(72 0)">
+      <path d="M5 7V5h14v2M12 5v14M9 19h6"/>
+    </g>
+    <g id="undo" transform="translate(96 0)">
+      <path d="m9 4-5 5 5 5M4 9h9a6 6 0 0 1 0 12h-2"/>
+    </g>
+    <g id="save" transform="translate(120 0)">
+      <path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/>
+    </g>
+    <g id="quit" transform="translate(144 0)">
+      <path d="m6 6 12 12M18 6 6 18"/>
+    </g>
+    <g id="finish" transform="translate(168 0)">
+      <rect x="4" y="7" width="12" height="13" rx="1.5"/>
+      <path d="M8 7V4h12v12h-4"/>
+    </g>
+  </g>
+</svg>

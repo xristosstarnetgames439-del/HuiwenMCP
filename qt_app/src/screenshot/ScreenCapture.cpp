@@ -230,16 +230,21 @@ class CaptureOverlay final : public QWidget
         RightBottom
     };
 
-    static constexpr int kResizePadding = 6; // 边框命中宽度
+    static constexpr int kSelectionBorderWidth = 3;
+    static constexpr int kHandleRadius = 5;
+    static constexpr int kResizePadding = 8; // 覆盖圆点外缘的热区和重绘余量
 
     // 根据鼠标位置判定命中的选区边框/角落方向
     ResizeDir getResizeDir(const QPoint &pos) const
     {
         const QRect sel = selection_.normalized();
-        const bool nearLeft = pos.x() >= sel.left() && pos.x() <= sel.left() + kResizePadding;
-        const bool nearRight = pos.x() <= sel.right() && pos.x() >= sel.right() - kResizePadding;
-        const bool nearTop = pos.y() >= sel.top() && pos.y() <= sel.top() + kResizePadding;
-        const bool nearBottom = pos.y() <= sel.bottom() && pos.y() >= sel.bottom() - kResizePadding;
+        if (!sel.adjusted(-kResizePadding, -kResizePadding, kResizePadding, kResizePadding)
+                 .contains(pos))
+            return ResizeDir::None;
+        const bool nearLeft = qAbs(pos.x() - sel.left()) <= kResizePadding;
+        const bool nearRight = qAbs(pos.x() - sel.right()) <= kResizePadding;
+        const bool nearTop = qAbs(pos.y() - sel.top()) <= kResizePadding;
+        const bool nearBottom = qAbs(pos.y() - sel.bottom()) <= kResizePadding;
         if (nearLeft && nearTop)
             return ResizeDir::LeftTop;
         if (nearRight && nearBottom)
@@ -327,11 +332,13 @@ class CaptureOverlay final : public QWidget
         const qint64 toolbarStarted = resizeTrace_.clock.nsecsElapsed();
         positionToolbar();
         resizeTrace_.toolbar.add(resizeTrace_.clock.nsecsElapsed() - toolbarStarted);
-        // 只重绘明暗发生变化的区域和新旧边框，保留两像素余量清除旧描边。
+        // 明暗差异和边缘环带一起重绘，余量覆盖旧圆点，避免拉伸残影。
         QRegion dirty = QRegion(before).xored(QRegion(selection_));
         for (const QRect &edge : {before, selection_})
-            dirty += QRegion(edge.adjusted(-2, -2, 2, 2))
-                         .subtracted(QRegion(edge.adjusted(2, 2, -2, -2)));
+            dirty += QRegion(edge.adjusted(-kResizePadding, -kResizePadding, kResizePadding,
+                                           kResizePadding))
+                         .subtracted(QRegion(edge.adjusted(kResizePadding, kResizePadding,
+                                                           -kResizePadding, -kResizePadding)));
         update(dirty.intersected(QRegion(rect())));
         resizeTrace_.input.add(resizeTrace_.clock.nsecsElapsed() - started);
     }
@@ -542,8 +549,6 @@ class CaptureOverlay final : public QWidget
         {
             painter.drawPixmap(selected, screen_, sourceRect(selected));
             painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-            painter.setPen(QPen(QColor(45, 140, 255), 2));
-            painter.drawRect(selected.adjusted(0, 0, -1, -1));
 
             painter.save();
             painter.setClipRect(selected);
@@ -552,6 +557,22 @@ class CaptureOverlay final : public QWidget
             if (drawingMark_)
                 drawMark(painter, currentMark_);
             painter.restore();
+
+            // 边框与八个控制点统一蓝色，控制点绘制在标注上方。
+            const QColor selectionColor(0x39, 0x83, 0xf7);
+            const QRectF frame(selected.adjusted(0, 0, -1, -1));
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setPen(QPen(selectionColor, kSelectionBorderWidth));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRect(frame);
+            painter.setPen(QPen(Qt::white, 1.5));
+            painter.setBrush(selectionColor);
+            const QPointF handles[] = {frame.topLeft(),     {frame.center().x(), frame.top()},
+                                       frame.topRight(),    {frame.right(), frame.center().y()},
+                                       frame.bottomRight(), {frame.center().x(), frame.bottom()},
+                                       frame.bottomLeft(),  {frame.left(), frame.center().y()}};
+            for (const QPointF &point : handles)
+                painter.drawEllipse(point, kHandleRadius, kHandleRadius);
         }
         painter.end();
         if (resizing_)

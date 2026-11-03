@@ -89,10 +89,10 @@ class CaptureToolbar : public QWidget
     QPoint CalculatePos(const QRect &rc) const;
     void changeHeight(bool bShowColor);
     // 事件过滤子处理器：将 eventFilter 的大块逻辑拆分，每个约 50 行
-    bool onToolPaint();                           // widTool 绘制（工具图标精灵）
-    bool onToolButtonRelease(QEvent *event);      // widTool 鼠标释放（命中按钮 -> click）
-    bool onColorPaint();                          // widToolColor 绘制（颜色条）
-    bool onToolMouseMove(QEvent *event);          // widTool 鼠标移动（悬停高亮 + 提示）
+    bool onToolPaint();                      // widTool 绘制（白底、状态和 SVG 缓存）
+    bool onToolButtonRelease(QEvent *event); // widTool 鼠标释放（命中按钮 -> click）
+    bool onColorPaint();                     // widToolColor 绘制（颜色条）
+    bool onToolMouseMove(QEvent *event);     // widTool 鼠标移动（悬停高亮 + 提示）
     QList<QAbstractButton *> toolButtons() const; // 工具按钮列表（复用）
   private:
     Ui::CaptureToolbar *ui;
