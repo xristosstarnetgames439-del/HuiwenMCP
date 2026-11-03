@@ -37,13 +37,19 @@ export struct FileManagerList {
   onRetry: () => void = () => {};
   onOpen: (file: FileManagerFile) => void = () => {};
   private dataSource: FileListDataSource = new FileListDataSource();
+  private scroller: Scroller = new Scroller();
 
-  aboutToAppear(): void { this.reload(); }
-  private reload(): void { this.dataSource.replace(this.entries); }
+  aboutToAppear(): void { this.dataSource.replace(this.entries); }
+
+  private reload(): void {
+    // 分类或搜索结果变化时停止旧滚动并回顶，不沿用上一组文件的位置。
+    this.scroller.scrollTo({ xOffset: 0, yOffset: 0, animation: false });
+    this.dataSource.replace(this.entries);
+  }
 
   build() {
     Stack() {
-      List() {
+      List({ scroller: this.scroller }) {
         LazyForEach(this.dataSource, (entry: FileManagerListEntry) => {
           ListItem() {
             if (entry.file === null) {
