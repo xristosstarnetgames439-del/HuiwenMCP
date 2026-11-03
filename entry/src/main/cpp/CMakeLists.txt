@@ -23,9 +23,12 @@ add_library(huiwen_native SHARED napi_bridge.cpp python_runner.cpp
 if(CMAKE_SYSTEM_NAME STREQUAL "OHOS")
     # 通用目录规则进入 NAPI 库，Qt 工作区复用同一份实现。
     target_sources(huiwen_native PRIVATE
+        "${workspace_root}/src/platform/harmony/harmony_screenshot.cpp"
         "${workspace_root}/src/sandbox/SandboxStore.cpp"
         "${workspace_root}/src/platform/harmony/harmony_sandbox.cpp"
         "${workspace_root}/src/platform/harmony/harmony_sandbox_napi.cpp")
+    # 首页起窗前抓屏，Qt 从同一个 NAPI 库取走像素图。
+    target_link_libraries(huiwen_native PRIVATE native_display_manager pixelmap)
 endif()
 target_include_directories(huiwen_native PRIVATE "${workspace_root}/src")
 target_link_libraries(huiwen_native PRIVATE ace_napi.z.so hilog_ndk.z.so rawfile.z.so Qt5::Core)

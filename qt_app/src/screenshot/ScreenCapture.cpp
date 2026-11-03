@@ -6,6 +6,7 @@
 #include <QDebug>
 
 #ifdef Q_OS_OPENHARMONY
+#include "platform/harmony/harmony_screenshot.h"
 // 汇文 CEF 预览的 Ctrl+V 读取鸿蒙系统剪贴板；Qt setPixmap 不保证图片同步过去。
 // 这里把截图以 file:// URI + pixelmap 两条记录同时写入系统 pasteboard，
 // 保证所有 web 窗口 Chromium Ctrl+V 能拿到图片。
@@ -46,6 +47,7 @@
 #include <QTimer>
 #include <QWidget>
 #include <QWindow>
+#include <climits>
 #include <cmath>
 #include <cstdlib>
 
@@ -152,7 +154,56 @@ bool writeScreenshotToSystemPasteboard(const QPixmap &pixmap, const QString &pat
 }
 #endif
 
+#ifdef Q_OS_OPENHARMONY
+using ScreenSnapshots = std::vector<PreparedScreenshot>;
+
+// 只在选定屏幕后转换一次；按真实行跨度复制，避免像素错位或红蓝通道颠倒。
+QImage ReadPreparedScreenshot(OH_PixelmapNative *pixels)
+{
+    OH_Pixelmap_ImageInfo *rawInfo = nullptr;
+    const auto created = OH_PixelmapImageInfo_Create(&rawInfo);
+    const std::unique_ptr<OH_Pixelmap_ImageInfo, decltype(&OH_PixelmapImageInfo_Release)> info(
+        rawInfo, OH_PixelmapImageInfo_Release);
+    uint32_t width = 0, height = 0, stride = 0;
+    int32_t format = 0, alpha = 0;
+    if (created != IMAGE_SUCCESS || !info ||
+        OH_PixelmapNative_GetImageInfo(pixels, info.get()) != IMAGE_SUCCESS ||
+        OH_PixelmapImageInfo_GetWidth(info.get(), &width) != IMAGE_SUCCESS ||
+        OH_PixelmapImageInfo_GetHeight(info.get(), &height) != IMAGE_SUCCESS ||
+        OH_PixelmapImageInfo_GetRowStride(info.get(), &stride) != IMAGE_SUCCESS ||
+        OH_PixelmapImageInfo_GetPixelFormat(info.get(), &format) != IMAGE_SUCCESS ||
+        OH_PixelmapImageInfo_GetAlphaType(info.get(), &alpha) != IMAGE_SUCCESS || width == 0 ||
+        width > INT_MAX / 4 || height == 0 || height > INT_MAX || stride < width * 4 ||
+        stride > INT_MAX)
+        return {};
+
+    const bool premultiplied = alpha == PIXELMAP_ALPHA_TYPE_PREMULTIPLIED;
+    const bool opaque = alpha == PIXELMAP_ALPHA_TYPE_OPAQUE;
+    QImage::Format imageFormat;
+    if (format == PIXEL_FORMAT_RGBA_8888)
+        imageFormat = opaque ? QImage::Format_RGBX8888
+                             : (premultiplied ? QImage::Format_RGBA8888_Premultiplied
+                                              : QImage::Format_RGBA8888);
+    else if (format == PIXEL_FORMAT_BGRA_8888)
+        imageFormat =
+            opaque ? QImage::Format_RGB32
+                   : (premultiplied ? QImage::Format_ARGB32_Premultiplied : QImage::Format_ARGB32);
+    else
+        return {};
+
+    void *address = nullptr;
+    if (OH_PixelmapNative_AccessPixels(pixels, &address) != IMAGE_SUCCESS)
+        return {};
+    // QImage 取得独立副本后立即解锁，随后可安全释放原生像素图。
+    const QImage image = QImage(static_cast<const uchar *>(address), static_cast<int>(width),
+                                static_cast<int>(height), static_cast<int>(stride), imageFormat)
+                             .copy();
+    OH_PixelmapNative_UnaccessPixels(pixels);
+    return image;
+}
+#else
 using ScreenSnapshots = QList<QPair<QPointer<QScreen>, QPixmap>>;
+#endif
 
 class CaptureOverlay final : public QWidget
 {
@@ -421,9 +472,15 @@ class CaptureOverlay final : public QWidget
         // 只取起窗前的画面，不能在系统启动页尚未退场时重新抓图。
         for (const auto &snapshot : snapshots_)
         {
+#ifdef Q_OS_OPENHARMONY
+            if (snapshot.displayId == static_cast<uint32_t>(displayId))
+            {
+                screen_ = QPixmap::fromImage(ReadPreparedScreenshot(snapshot.pixels.get()));
+#else
             if (snapshot.first == screen)
             {
                 screen_ = snapshot.second;
+#endif
                 break;
             }
         }
@@ -433,6 +490,7 @@ class CaptureOverlay final : public QWidget
             finish(false, QString(), QStringLiteral("未能获取启动前的屏幕截图，请重试。"));
             return true;
         }
+        qInfo().noquote() << "HUIWEN_SCREENSHOT: prepared image consumed size=" << screen_.size();
         // 暗色蒙层只合成一次；保存仍使用未经调暗的 screen_。
         dimmedScreen_ = screen_.copy();
         {
@@ -1298,9 +1356,26 @@ class CaptureOverlay final : public QWidget
 
 void BeginCapture(bool ignoreActiveWindow, ScreenCapture::FinishCallback callback)
 {
+#ifdef Q_OS_OPENHARMONY
+    // 首页已在启动 Ability 前抓屏；这里仅取走底图，禁止再截取全屏宿主。
+    ScreenSnapshots snapshots = TakePreparedScreenshots();
+#else
+    ScreenSnapshots snapshots;
+    for (QScreen *screen : QGuiApplication::screens())
+    {
+        const QPixmap image = screen->grabWindow(0);
+        if (!image.isNull())
+            snapshots.append(qMakePair(QPointer<QScreen>(screen), image));
+    }
+#endif
     if (!QGuiApplication::primaryScreen())
     {
         callback(false, QString(), QStringLiteral("未找到可截图的屏幕。"));
+        return;
+    }
+    if (snapshots.empty())
+    {
+        callback(false, QString(), QStringLiteral("未找到起窗前的截图底图，请重试。"));
         return;
     }
 
@@ -1308,57 +1383,26 @@ void BeginCapture(bool ignoreActiveWindow, ScreenCapture::FinishCallback callbac
     if (ignoreActiveWindow && activeWindow)
         activeWindow->hide();
 
-    QTimer::singleShot(ignoreActiveWindow ? 180 : 0, [activeWindow,
-                                                      callback = std::move(callback)]() mutable {
-        // 先抓取所有当前屏幕，再起窗获取焦点；避免启动页/Logo 混入截图。
-        ScreenSnapshots snapshots;
-        for (QScreen *screen : QGuiApplication::screens())
-        {
-            snapshots.append(qMakePair(QPointer<QScreen>(screen), QPixmap()));
-        }
-        bool hasSnapshot = false;
-        for (auto &snapshot : snapshots)
-        {
-            if (!snapshot.first)
-                continue;
-            const QString name = snapshot.first->name();
-            snapshot.second = snapshot.first->grabWindow(0);
-            hasSnapshot = hasSnapshot || !snapshot.second.isNull();
-            qInfo().noquote() << (QStringLiteral("HUIWEN_SCREENSHOT: pregrab screen=%1 size=%2x%3")
-                                      .arg(name)
-                                      .arg(snapshot.second.width())
-                                      .arg(snapshot.second.height()));
-        }
-        if (!hasSnapshot)
-        {
-            if (activeWindow)
-                activeWindow->show();
-            callback(false, QString(), QStringLiteral("系统屏幕捕获失败。"));
-            return;
-        }
-        // 每次截图新建 overlay，截图结束时 close 销毁（见 CaptureOverlay 构造函数注释：
-        // 常驻复用的 overlay 会把 startAbility 锁死在一个已进入后台的 Ability 上）
-        auto *overlay = new CaptureOverlay(
-            std::move(snapshots),
-            activeWindow && !activeWindow->isVisible() ? activeWindow.data() : nullptr,
-            std::move(callback));
-        // 这里只创建透明窗口取得原生焦点；查询成功后选用已有截图，不再抓图。
-        overlay->show();
-        overlay->raise();
-        overlay->activateWindow();
-        if (overlay->windowHandle())
-            overlay->windowHandle()->requestActivate();
-        auto *timer = new QTimer(overlay);
-        timer->setInterval(100);
-        QObject::connect(timer, &QTimer::timeout, overlay,
-                         [overlay, timer, deadline = QDeadlineTimer(5000)] {
-                             // 失败回调可能销毁窗口，先停表；只有仍在等待时才继续。
-                             timer->stop();
-                             if (!overlay->startOnPointerScreen(deadline.hasExpired()))
-                                 timer->start();
-                         });
-        timer->start();
-    });
+    // 每次新建覆盖层，结束即销毁，沿用现有焦点和鼠标选屏流程。
+    auto *overlay = new CaptureOverlay(
+        std::move(snapshots),
+        activeWindow && !activeWindow->isVisible() ? activeWindow.data() : nullptr,
+        std::move(callback));
+    overlay->showFullScreen();
+    overlay->raise();
+    overlay->activateWindow();
+    if (overlay->windowHandle())
+        overlay->windowHandle()->requestActivate();
+    auto *timer = new QTimer(overlay);
+    timer->setInterval(100);
+    QObject::connect(timer, &QTimer::timeout, overlay,
+                     [overlay, timer, deadline = QDeadlineTimer(5000)] {
+                         // 失败回调可能销毁窗口，先停表；只有仍在等待时才继续。
+                         timer->stop();
+                         if (!overlay->startOnPointerScreen(deadline.hasExpired()))
+                             timer->start();
+                     });
+    timer->start();
 }
 
 } // namespace

@@ -32,6 +32,10 @@ interface HuiwenNative {
   checkPython(): Promise<string>;
   // 异步把沙箱 PDF 写成 MD；成功返回输出路径，失败拒绝 Promise。
   convertPdf(inputPath: string, outputPath: string): Promise<string>;
+  // 截图 API：启动截图宿主前缓存屏幕底图，Qt 取用后释放；失败时不启动宿主。
+  prepareScreenshot(): Promise<void>;
+  // 截图宿主启动失败或关闭时，释放尚未交给 Qt 的底图。
+  clearPreparedScreenshot(): void;
   harmonyImportDocument(filesDir: string, name: string, fd: number, kind: string,
     mode: string): Promise<HarmonySandboxDocument>;
   harmonyValidateOutput(filesDir: string, path: string): string;

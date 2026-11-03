@@ -46,6 +46,8 @@
         "description": "$string:EntryAbility_desc",
         "icon": "$media:app_icon",
         "label": "$string:EntryAbility_label",
+        // 截图宿主禁用系统启动页，避免首次初始化 Qt 时显示默认加载窗口。
+        "startWindow": "$profile:screenshot_start_window",
         "startWindowIcon": "$media:screenshot_start_icon",
         "startWindowBackground": "$color:screenshot_start_background",
         "exported": false

@@ -1,5 +1,5 @@
 // ArkTS 首页独立于 QPA 固定加载的 Index 承载页，负责功能入口和窗口交接。
-import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit';
+import { AbilityConstant, abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit';
 import { FunctionSidebar } from '../components/home/FunctionSidebar';
 import { HomeTitleBar } from '../components/home/HomeTitleBar';
 import { HomeFeatureCard } from '../components/home/HomeFeatureCard';
@@ -18,6 +18,7 @@ import { openFileDirectory } from '../services/FileManagerService';
 import { applyHomeAppearance, HomeAppearance } from '../utils/HomeAppearance';
 import { DocumentKind, DocumentMode } from '../utils/DocumentStore';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import nativeBridge from 'libhuiwen_native.so';
 
 @Entry
 @Component
@@ -46,6 +47,7 @@ struct HomePage {
   @State homeDialogOpening: boolean = false;
   private homeVisible: boolean = false;
   private recentRefreshPending: boolean = false;
+  private screenshotStarting: boolean = false;
   // 只等待窗口显示，不等待任务恢复，也不接收工作区业务错误。
   private workspaceReady = (): void => {
     if (!this.workspaceLaunching) {
@@ -158,6 +160,10 @@ struct HomePage {
   }
 
   private async takeScreenshot(): Promise<void> {
+    if (this.screenshotStarting) {
+      return;
+    }
+    this.screenshotStarting = true;
     this.closeMenu();
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
@@ -168,10 +174,19 @@ struct HomePage {
         result.authResults[0] !== abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED) {
         throw new Error('未获得屏幕截图权限');
       }
-      await context.startAbility({ bundleName: 'cn.com.HuiWenMCP', abilityName: 'QtScreenshotAbility' });
+      // 先缓存桌面再启动宿主，避免冷启动全屏窗口混入截图底图。
+      await nativeBridge.prepareScreenshot();
+      // 截图宿主直接全屏且不播放启动动画，避免先显示默认浮动窗口。
+      await context.startAbility({ bundleName: 'cn.com.HuiWenMCP', abilityName: 'QtScreenshotAbility' }, {
+        windowMode: AbilityConstant.WindowMode.WINDOW_MODE_FULLSCREEN,
+        withAnimation: false
+      });
     } catch (error) {
+      nativeBridge.clearPreparedScreenshot();
       hilog.error(0xFF00, 'HuiwenMCP', 'HUIWEN_SCREENSHOT_START_FAILED: %{public}s', (error as Error).message);
       this.getUIContext().getPromptAction().showToast({ message: `截图启动失败：${(error as Error).message}` });
+    } finally {
+      this.screenshotStarting = false;
     }
   }
 

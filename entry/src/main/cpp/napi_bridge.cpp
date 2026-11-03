@@ -5,6 +5,7 @@
 #include "napi/native_api.h"
 #include "python_runner.h"
 #include "platform/harmony/qt_bridge.h"
+#include "platform/harmony/harmony_screenshot.h"
 
 #include <exception>
 #include <string>
@@ -186,6 +187,7 @@ static napi_value Init(napi_env env, napi_value exports)
     // 工作区桥接使用同一模块，Qt 与 ArkTS 共享回调和 PythonRunner。
     InitQtBridge(env, exports);
     InitHarmonySandbox(env, exports);
+    InitHarmonyScreenshot(env, exports);
     return exports;
 }
 

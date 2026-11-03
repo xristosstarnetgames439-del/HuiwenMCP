@@ -31,7 +31,7 @@ export default class QtScreenshotAbility extends UIAbility {
     };
     events.on('huiwen.screenshot.contentReady', this.contentReady);
     try {
-      // QPA 先加载 Index；收到内容就绪通知后再抓屏，避免捕获空宿主背景。
+      // 首页已抓屏；QPA 加载 Index 后再通知 Qt 取用起窗前的底图。
       qpa.startQtApplication(this);
     } catch (error) {
       this.failStart(error as Error);
@@ -65,6 +65,7 @@ export default class QtScreenshotAbility extends UIAbility {
   }
 
   private failStart(error: Error): void {
+    nativeBridge.clearPreparedScreenshot();
     this.context.getApplicationContext().eventHub.off('huiwen.screenshot.contentReady', this.contentReady);
     hilog.error(0xFF00, 'HuiwenScreenshot', 'HUIWEN_SCREENSHOT_START_FAILED: %{public}s', error.message);
     this.context.terminateSelf().catch((failure: Error) => console.warn(failure.message));
@@ -75,6 +76,7 @@ export default class QtScreenshotAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    nativeBridge.clearPreparedScreenshot();
     this.context.getApplicationContext().eventHub.off('huiwen.screenshot.contentReady', this.contentReady);
     // 等 QPA 标记宿主已销毁后，再解除本次 Qt 会话，沿用工作区的释放顺序。
     setTimeout(() => nativeBridge.clearWorkspace(), 0);
