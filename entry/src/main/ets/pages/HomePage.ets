@@ -235,12 +235,16 @@ struct HomePage {
         // PromptAction 的独立子窗口不能同时启用模态。
         isModal: false,
         autoCancel: true,
-        // 背板与内容共用固定宽度，只由背板绘制背景、圆角及阴影。
-        width: this.homeDialogWidth,
-        backgroundColor: $r('app.color.home_surface'),
+        // 文件管理使用透明承载层，内部面板自行缩放并绘制背板；其他弹窗保持原尺寸。
+        width: feature === HomeFeature.FileManager ? '100%' : this.homeDialogWidth,
+        height: feature === HomeFeature.FileManager ? '100%' : undefined,
+        backgroundColor: feature === HomeFeature.FileManager ? Color.Transparent : $r('app.color.home_surface'),
         backgroundBlurStyle: BlurStyle.NONE,
-        cornerRadius: 16,
-        shadow: { radius: 16, color: '#22000000', offsetX: 0, offsetY: 6 },
+        cornerRadius: feature === HomeFeature.FileManager ? 0 : 16,
+        shadow: {
+          radius: feature === HomeFeature.FileManager ? 0 : 16,
+          color: '#22000000', offsetX: 0, offsetY: feature === HomeFeature.FileManager ? 0 : 6
+        },
         onWillDismiss: (action: DismissDialogAction) => {
           this.homeDialogId = -1;
           action.dismiss();
