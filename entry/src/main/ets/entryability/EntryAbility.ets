@@ -4,7 +4,8 @@ import Window from '@ohos.window'
 import Want from '@ohos.app.ability.Want';
 import hilog from '@ohos.hilog';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { initializeHomeAppearance } from '../utils/HomeAppearance';
+import { Configuration } from '@kit.AbilityKit';
+import { applyHomeWindowColors, initializeHomeAppearance } from '../utils/HomeAppearance';
 
 
 export default class EntryAbility extends UIAbility {
@@ -12,6 +13,7 @@ export default class EntryAbility extends UIAbility {
   domain = 0xFF00;
   private contentReady: boolean = false;
   private foreground: boolean = false;
+  private mainWindow: Window.Window | undefined = undefined;
 
   // 页面已加载且实际进入前台，才确认可以结束旧工作区。
   private notifyHomeReady(): void {
@@ -22,6 +24,13 @@ export default class EntryAbility extends UIAbility {
 
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     this.notifyHomeReady();
+  }
+
+  onConfigurationUpdate(_configuration: Configuration): void {
+    // 跟随系统深浅色变化；手动外观切换由 HomeAppearance 同步。
+    if (this.mainWindow) {
+      applyHomeWindowColors(this.context, this.mainWindow);
+    }
   }
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam) {
@@ -55,6 +64,7 @@ export default class EntryAbility extends UIAbility {
       }
       try {
         const mainWindow = windowStage.getMainWindowSync();
+        this.mainWindow = mainWindow;
         const uiContext = mainWindow.getUIContext();
         // 窗口限制使用 px，按首页密度换算 880 × 680vp；不限制最大尺寸。
         mainWindow.setWindowLimits({
@@ -85,16 +95,8 @@ export default class EntryAbility extends UIAbility {
           'HUIWEN_HOME_TRANSPARENT_FAILED: stage=background, code=%{public}d, message=%{public}s',
           failure.code, failure.message);
       }
-      try {
-        // 仅设置首页窗口；主内容保持实色，标题区透明并保留系统窗口控制按钮。
-        // 焦点态透明，非焦点态需使用不透明底色。
-        windowStage.getMainWindowSync().setWindowContainerColor('#00000000', '#FFF5F7FB');
-      } catch (error) {
-        const failure = error as BusinessError;
-        // 不支持容器透明时保留系统容器背景，首页与按钮仍可使用。
-        hilog.warn(this.domain, this.tag,
-          'HUIWEN_HOME_TRANSPARENT_FAILED: stage=container, code=%{public}d, message=%{public}s',
-          failure.code, failure.message);
+      if (this.mainWindow) {
+        applyHomeWindowColors(this.context, this.mainWindow);
       }
       this.contentReady = true;
       this.notifyHomeReady();
@@ -102,6 +104,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageDestroy() {
+    this.mainWindow = undefined;
     this.contentReady = false;
     this.foreground = false;
     // Main window is destroyed, release UI related resources
