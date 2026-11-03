@@ -71,7 +71,6 @@ export default class QtWorkspaceAbility extends UIAbility {
     }
     const taskPath: string = this.pendingTask;
     if (taskPath === '') {
-      this.context.getApplicationContext().eventHub.emit('huiwen.workspace.ready');
       return;
     }
     this.restoring = true;
@@ -92,12 +91,13 @@ export default class QtWorkspaceAbility extends UIAbility {
       };
       nativeBridge.workspaceReply(JSON.stringify(reply));
     } catch (error) {
-      if (!this.destroyed && this.pendingTask === taskPath) {
+      if (!this.destroyed && !this.closing && this.pendingTask === taskPath) {
         this.pendingTask = '';
         this.restoring = false;
         const message: string = (error as Error).message;
         hilog.error(0xFF00, 'QtWorkspace', 'HUIWEN_QT_RESTORE_FAILED: %{public}s', message);
-        this.context.getApplicationContext().eventHub.emit('huiwen.workspace.failed', message);
+        // 错误只交给当前 Qt 页面，不带回首页。
+        nativeBridge.workspaceReply(JSON.stringify({ action: 'restore', error: message }));
       }
     }
   }
@@ -126,7 +126,7 @@ export default class QtWorkspaceAbility extends UIAbility {
       hilog.info(0xFF00, 'QtWorkspace', 'HUIWEN_QT_START');
     } catch (error) {
       const message = (error as Error).message;
-      this.context.getApplicationContext().eventHub.emit('huiwen.workspace.failed', message);
+      hilog.error(0xFF00, 'QtWorkspace', 'HUIWEN_QT_START_FAILED: %{public}s', message);
       this.context.terminateSelf().catch((failure: Error) => {
         hilog.error(0xFF00, 'QtWorkspace', '关闭失败的 Qt 窗口：%{public}s', failure.message);
       });
@@ -152,6 +152,8 @@ export default class QtWorkspaceAbility extends UIAbility {
     if (event.action === 'ready') {
       this.workspaceReady = true;
       hilog.info(0xFF00, 'QtWorkspace', 'HUIWEN_QT_READY');
+      // 窗口已显示即可结束原首页，文件恢复不参与窗口交接。
+      this.context.getApplicationContext().eventHub.emit('huiwen.workspace.ready');
       await this.deliverPendingTask();
       return;
     }
@@ -164,11 +166,8 @@ export default class QtWorkspaceAbility extends UIAbility {
       this.restoring = false;
       if (result.error !== '') {
         hilog.error(0xFF00, 'QtWorkspace', 'HUIWEN_QT_RESTORE_FAILED: %{public}s', result.error);
-        this.context.getApplicationContext().eventHub.emit('huiwen.workspace.failed', result.error);
       } else {
         hilog.info(0xFF00, 'QtWorkspace', 'HUIWEN_QT_RESTORE_OK');
-        // Qt 已载入任务并更新时间，首页此时才结束自己的 Ability。
-        this.context.getApplicationContext().eventHub.emit('huiwen.workspace.ready');
       }
       return;
     }
@@ -226,6 +225,9 @@ export default class QtWorkspaceAbility extends UIAbility {
       return;
     }
     this.closing = true;
+    // 保留原关闭顺序，仅停止消费本次未完成的恢复结果。
+    this.pendingTask = '';
+    this.restoring = false;
     this.context.getApplicationContext().eventHub.on('huiwen.home.ready', this.homeReady);
     try {
       await this.context.startAbility({ bundleName: 'cn.com.HuiWenMCP', abilityName: 'EntryAbility' });
@@ -268,23 +270,28 @@ export default class QtWorkspaceAbility extends UIAbility {
     setTimeout(() => nativeBridge.clearWorkspace(), 0);
     this.cefProxy?.dispose();
     this.cefProxy = undefined;
+    // 首页已经显示，在工作区实际销毁后重读最近列表，不修改沙箱时间规则。
+    this.context.getApplicationContext().eventHub.emit('huiwen.workspace.closed');
   }
 
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
-    // 复用已有窗口时也重新传递任务；仅在 Qt 确认恢复后通知首页关闭。
+    // 关闭中的旧任务不再向新首页回传错误。
     if (this.closing) {
-      this.context.getApplicationContext().eventHub.emit('huiwen.workspace.failed', '工作区正在关闭，请稍后再打开');
       return;
     }
+    if (this.workspaceReady) {
+      this.context.getApplicationContext().eventHub.emit('huiwen.workspace.ready');
+    }
     if (this.restoring || this.pickerBusy) {
-      this.context.getApplicationContext().eventHub.emit('huiwen.workspace.failed', '工作区正在处理文件，请稍后重试');
+      nativeBridge.workspaceReply(JSON.stringify({ action: 'restore', error: '工作区正在处理文件，请稍后重试' }));
       return;
     }
     // 模式在本次窗口生命周期内固定；跨模式仍通过关闭回首页后再次打开，避免抢先释放 CEF。
     if (String(want.parameters?.huiwenMode ?? DocumentMode.Convert) !== this.mode ||
       String(want.parameters?.huiwenKind ?? DocumentKind.PDF) !== this.kind) {
-      this.context.getApplicationContext().eventHub.emit('huiwen.workspace.failed',
-        '请先关闭当前工作区，再打开其他模式或文档类型');
+      nativeBridge.workspaceReply(JSON.stringify({
+        action: 'restore', error: '请先关闭当前工作区，再打开其他模式或文档类型'
+      }));
       return;
     }
     qpa.handleOnNewWant(want, launchParam);

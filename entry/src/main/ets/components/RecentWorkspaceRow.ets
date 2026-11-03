@@ -4,9 +4,17 @@ import { RecentWorkspace } from '../services/RecentWorkspaceService';
 @Component
 export struct RecentWorkspaceRow {
   @Prop workspace: RecentWorkspace;
-  @Prop available: boolean = true;
-  @State hoveredTask: string = '';
+  @Prop @Watch('clearHover') available: boolean = true;
+  @State hovered: boolean = false;
   onOpen: (workspace: RecentWorkspace) => void = () => {};
+
+  private clearHover(): void {
+    this.hovered = false;
+  }
+
+  aboutToDisappear(): void {
+    this.clearHover();
+  }
 
   private modeIcon(mode: string): Resource {
     if (mode === 'preview') {
@@ -41,14 +49,6 @@ export struct RecentWorkspaceRow {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .ellipsisMode(EllipsisMode.CENTER)
-          .onHover((hovered: boolean) => {
-            this.hoveredTask = hovered ? this.workspace.taskPath : '';
-          })
-          .bindPopup(this.hoveredTask === this.workspace.taskPath && this.available, {
-            message: this.workspace.name,
-            placement: Placement.Top,
-            focusable: false
-          })
 
         Row({ space: 8 }) {
           Text(this.workspace.formatLabel)
@@ -71,18 +71,25 @@ export struct RecentWorkspaceRow {
         .flexShrink(0)
       }
       .width('100%')
+      .height('100%')
+      .padding({ right: 12 })
       .alignItems(VerticalAlign.Center)
+      // 子组件不接管鼠标命中，空白和文字都由外层整行按钮处理。
+      .hitTestBehavior(HitTestMode.None)
     }
     .width('100%')
     .height(48)
     .padding(0)
-    .backgroundColor(Color.Transparent)
+    .backgroundColor(this.hovered && this.available ? $r('app.color.home_card') : Color.Transparent)
     .borderRadius(8)
-    .hoverEffect(HoverEffect.Auto)
+    // 仅 hover 控制背景，禁用按钮自带的焦点／按压残留效果。
+    .hoverEffect(HoverEffect.None)
+    .stateEffect(false)
     .enabled(this.available && this.workspace.canOpen)
+    .onHover((hovered: boolean) => { this.hovered = hovered; })
     .accessibilityText(`${this.workspace.name}，${this.workspace.formatLabel}，${this.workspace.timeLabel}`)
     .onClick(() => {
-      this.hoveredTask = '';
+      this.clearHover();
       this.onOpen(this.workspace);
     })
   }

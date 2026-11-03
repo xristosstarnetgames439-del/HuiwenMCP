@@ -33,7 +33,6 @@ struct HomePage {
   private aboutDialogOpening: boolean = false;
   @State pingResult: string = '待检测';
   @State activeFeature: HomeFeature = HomeFeature.None;
-  @State workspaceError: string = '';
   @State workspaceLaunching: boolean = false;
   @State recentWorkspaces: RecentWorkspace[] = [];
   @State recentLoading: boolean = false;
@@ -43,29 +42,21 @@ struct HomePage {
   @State homeDialogId: number = -1;
   @State homeDialogOpening: boolean = false;
   private homeVisible: boolean = false;
-  private launchTimeout: number = -1;
-  private launchVersion: number = 0;
+  private recentRefreshPending: boolean = false;
+  // 只等待窗口显示，不等待任务恢复，也不接收工作区业务错误。
   private workspaceReady = (): void => {
-    // 只有发起跳转的首页消费一次就绪通知，避免其他页面结束自己的 Ability。
     if (!this.workspaceLaunching) {
       return;
     }
     this.workspaceLaunching = false;
-    clearTimeout(this.launchTimeout);
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    // Qt 窗口确认显示后，只结束原首页 Ability，不结束应用进程。
     context.terminateSelf().catch((error: Error) => {
-      this.workspaceError = `关闭首页失败：${error.message}`;
-      this.workspaceLaunching = false;
+      hilog.warn(0xFF00, 'HuiwenMCP', '关闭首页失败：%{public}s', error.message);
     });
   };
-  private workspaceFailed = (message: string): void => {
-    if (!this.workspaceLaunching) {
-      return;
-    }
-    clearTimeout(this.launchTimeout);
+  private workspaceClosed = (): void => {
     this.workspaceLaunching = false;
-    this.workspaceError = `Qt 工作区启动失败：${message}`;
+    this.refreshRecentWorkspaces(true);
   };
 
   aboutToAppear(): void {
@@ -74,7 +65,7 @@ struct HomePage {
     this.pingResult = getNativeStatus();
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     context.getApplicationContext().eventHub.on('huiwen.workspace.ready', this.workspaceReady);
-    context.getApplicationContext().eventHub.on('huiwen.workspace.failed', this.workspaceFailed);
+    context.getApplicationContext().eventHub.on('huiwen.workspace.closed', this.workspaceClosed);
     this.refreshRecentWorkspaces();
   }
 
@@ -83,20 +74,28 @@ struct HomePage {
     this.menuOpen = false;
     this.closeAboutDialog();
     this.closeHomeDialog();
-    clearTimeout(this.launchTimeout);
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     context.getApplicationContext().eventHub.off('huiwen.workspace.ready', this.workspaceReady);
-    context.getApplicationContext().eventHub.off('huiwen.workspace.failed', this.workspaceFailed);
+    context.getApplicationContext().eventHub.off('huiwen.workspace.closed', this.workspaceClosed);
+    this.recentRefreshPending = false;
   }
 
   onPageShow(): void {
     this.refreshRecentWorkspaces();
   }
 
-  private async refreshRecentWorkspaces(): Promise<void> {
-    if (!this.homeVisible || this.recentLoading) {
+  private async refreshRecentWorkspaces(queueIfLoading: boolean = false): Promise<void> {
+    if (!this.homeVisible) {
       return;
     }
+    if (this.recentLoading) {
+      // 返回首页时的刷新不能被首次读取吞掉，只合并补刷一次。
+      if (queueIfLoading) {
+        this.recentRefreshPending = true;
+      }
+      return;
+    }
+    this.recentRefreshPending = false;
     this.recentLoading = true;
     this.recentError = '';
     try {
@@ -111,6 +110,9 @@ struct HomePage {
       }
     } finally {
       this.recentLoading = false;
+      if (this.recentRefreshPending && this.homeVisible) {
+        this.refreshRecentWorkspaces();
+      }
     }
   }
 
@@ -124,24 +126,17 @@ struct HomePage {
       return;
     }
     this.workspaceLaunching = true;
-    const launchVersion = ++this.launchVersion;
     this.menuOpen = false;
-    this.workspaceError = '';
-    this.launchTimeout = setTimeout(() => {
-      this.workspaceFailed('未收到窗口显示通知，请检查 HUIWEN_QT 日志');
-    }, 15000);
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      if (!this.homeVisible || !this.workspaceLaunching || launchVersion !== this.launchVersion) {
-        return;
-      }
       await context.startAbility({
         bundleName: 'cn.com.HuiWenMCP', abilityName: 'QtWorkspaceAbility',
         parameters: { huiwenTaskPath: taskPath, huiwenMode: mode, huiwenKind: kind }
       });
     } catch (error) {
-      if (launchVersion === this.launchVersion) {
-        this.workspaceFailed((error as Error).message);
+      if (this.homeVisible) {
+        this.workspaceLaunching = false;
+        hilog.warn(0xFF00, 'HuiwenMCP', '打开工作区失败：%{public}s', (error as Error).message);
       }
     }
   }
@@ -155,7 +150,7 @@ struct HomePage {
       this.homeDialogId = -1;
       return true;
     } catch (error) {
-      this.workspaceError = `关闭首页弹窗失败：${(error as Error).message}`;
+      hilog.warn(0xFF00, 'HuiwenMCP', '关闭首页弹窗失败：%{public}s', (error as Error).message);
       return false;
     }
   }
@@ -202,7 +197,6 @@ struct HomePage {
     this.workspaceListHeight = Math.min(WORKSPACE_PAGE_SIZE * 48 +
       (WORKSPACE_PAGE_SIZE - 1) * 8, Math.max(48, this.availableHeight - 160));
     this.menuOpen = false;
-    this.workspaceError = '';
     this.homeDialogOpening = true;
     try {
       const promptAction = this.getUIContext().getPromptAction();
@@ -234,7 +228,7 @@ struct HomePage {
       }
       this.homeDialogId = dialogId;
     } catch (error) {
-      this.workspaceError = `打开首页弹窗失败：${(error as Error).message}`;
+      hilog.warn(0xFF00, 'HuiwenMCP', '打开首页弹窗失败：%{public}s', (error as Error).message);
     } finally {
       this.homeDialogOpening = false;
     }
@@ -384,7 +378,7 @@ struct HomePage {
       }
       this.aboutDialogId = id;
     } catch (error) {
-      this.workspaceError = `打开关于窗口失败：${(error as Error).message}`;
+      hilog.warn(0xFF00, 'HuiwenMCP', '打开关于窗口失败：%{public}s', (error as Error).message);
     } finally {
       this.aboutDialogOpening = false;
     }
@@ -483,11 +477,6 @@ struct HomePage {
             Text('正在打开转换工作区…')
               .fontSize(14)
               .fontColor($r('app.color.home_muted'))
-          }
-          if (this.workspaceError !== '') {
-            Text(this.workspaceError)
-              .fontSize(13)
-              .fontColor($r('app.color.home_warning'))
           }
           if (this.pingResult !== 'NAPI OK') {
             Text('原生模块尚未就绪')
