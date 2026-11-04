@@ -3,6 +3,7 @@ import { common, OpenLinkOptions } from '@kit.AbilityKit';
 import { fileUri } from '@kit.CoreFileKit';
 import nativeBridge, { HarmonySandboxFile } from 'libhuiwen_native.so';
 import { FileManagerFile } from '../models/FileManagerFile';
+import { ensureWorkspaceAccess } from './settings/WorkspaceStorage';
 
 function formatMode(file: HarmonySandboxFile): string {
   if (file.mode !== 'convert') {
@@ -29,7 +30,7 @@ export function formatFileSize(bytes: number): string {
 }
 
 export async function listFileManagerFiles(context: common.UIAbilityContext): Promise<FileManagerFile[]> {
-  const files = await nativeBridge.harmonyListFiles(context.getApplicationContext().filesDir);
+  const files = await nativeBridge.harmonyListFiles(await ensureWorkspaceAccess(context));
   return files.map((file: HarmonySandboxFile): FileManagerFile => {
     return {
       name: file.name, path: file.path, role: file.role, kind: file.kind,
@@ -57,7 +58,7 @@ export function filterFileManagerFiles(files: FileManagerFile[], category: strin
 // 左键只定位所在目录：复用沙箱目录校验，不恢复任务或修改最近使用时间。
 export async function openFileDirectory(context: common.UIAbilityContext, file: FileManagerFile): Promise<void> {
   const directory = nativeBridge.harmonyValidateTaskDirectory(
-    context.getApplicationContext().filesDir, file.path.substring(0, file.path.lastIndexOf('/')));
+    await ensureWorkspaceAccess(context), file.path.substring(0, file.path.lastIndexOf('/')));
   const options: OpenLinkOptions = {
     parameters: { fileUri: fileUri.getUriFromPath(directory) }
   };

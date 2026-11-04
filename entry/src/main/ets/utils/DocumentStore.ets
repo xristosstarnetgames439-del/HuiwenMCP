@@ -4,6 +4,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo, fileUri, picker } from '@kit.CoreFileKit';
 import hilog from '@ohos.hilog';
 import nativeBridge, { HarmonySandboxDocument } from 'libhuiwen_native.so';
+import { ensureWorkspaceAccess } from '../services/settings/WorkspaceStorage';
 
 function importError(stage: string, error: BusinessError): Error {
   const code = String(error.code ?? 'unknown');
@@ -50,15 +51,16 @@ export async function pickDocumentToSandbox(context: common.UIAbilityContext, ki
     throw importError('打开所选文件', error as BusinessError);
   }
   try {
+    const root = await ensureWorkspaceAccess(context);
     return await nativeBridge.harmonyImportDocument(
-      context.getApplicationContext().filesDir, name, source.fd, kind, mode);
+      root, name, source.fd, kind, mode);
   } finally {
     await fileIo.close(source);
   }
 }
 
 // 首页和全部工作区复用分页入口；查询本身不修改任务时间。
-export function getRecentDocuments(context: common.UIAbilityContext, limit: number = 5,
+export async function getRecentDocuments(context: common.UIAbilityContext, limit: number = 5,
   mode: string = 'all', offset: number = 0): Promise<HarmonySandboxDocument[]> {
-  return nativeBridge.harmonyRecentDocuments(context.getApplicationContext().filesDir, mode, limit, offset);
+  return nativeBridge.harmonyRecentDocuments(await ensureWorkspaceAccess(context), mode, limit, offset);
 }

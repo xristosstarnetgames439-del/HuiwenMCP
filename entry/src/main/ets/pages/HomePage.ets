@@ -1,5 +1,5 @@
 // ArkTS 首页独立于 QPA 固定加载的 Index 承载页，负责功能入口和窗口交接。
-import { AbilityConstant, abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit';
+import { bundleManager, common } from '@kit.AbilityKit';
 import { FunctionSidebar } from '../components/home/FunctionSidebar';
 import { HomeTitleBar } from '../components/home/HomeTitleBar';
 import { HomeFeatureCard } from '../components/home/HomeFeatureCard';
@@ -13,12 +13,14 @@ import {
 import { HomeMoreMenu, HOME_MENU_WIDTH, HOME_MENU_GAP } from '../components/home/HomeMoreMenu';
 import { HomeAboutDialog } from '../components/home/HomeAboutDialog';
 import { FileManagerDialog } from '../components/fileManager/FileManagerDialog';
+import { SettingsDialog } from '../components/settings/SettingsDialog';
+import { readSettings, SETTINGS_CHANGED } from '../services/settings/AppSettings';
+import { BEFORE_SCREENSHOT, isScreenshotRunning, startScreenshot } from '../services/screenshot/ScreenshotService';
 import { FileManagerFile } from '../models/FileManagerFile';
 import { openFileDirectory } from '../services/FileManagerService';
 import { applyHomeAppearance, HomeAppearance } from '../utils/HomeAppearance';
 import { DocumentKind, DocumentMode } from '../utils/DocumentStore';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import nativeBridge from 'libhuiwen_native.so';
 
 @Entry
 @Component
@@ -41,13 +43,25 @@ struct HomePage {
   @State recentWorkspaces: RecentWorkspace[] = [];
   @State recentLoading: boolean = false;
   @State recentError: string = '';
+  @State recentLimit: number = 3;
+  @State recentTop: number = 0;
+  @State contentBottom: number = 0;
   private homeDialogWidth: number = HOME_FORMAT_DIALOG_WIDTH;
   private workspaceListHeight: number = 552;
   @State homeDialogId: number = -1;
   @State homeDialogOpening: boolean = false;
   private homeVisible: boolean = false;
   private recentRefreshPending: boolean = false;
-  private screenshotStarting: boolean = false;
+  private settingsChanged = (): void => {
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    this.recentLimit = readSettings(context).recentLimit;
+    this.refreshRecentWorkspaces(true);
+  };
+  private beforeScreenshot = (): void => {
+    this.menuOpen = false;
+    this.closeHomeDialog();
+    this.closeAboutDialog();
+  };
   // 只等待窗口显示，不等待任务恢复，也不接收工作区业务错误。
   private workspaceReady = (): void => {
     if (!this.workspaceLaunching) {
@@ -71,7 +85,9 @@ struct HomePage {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     context.getApplicationContext().eventHub.on('huiwen.workspace.ready', this.workspaceReady);
     context.getApplicationContext().eventHub.on('huiwen.workspace.closed', this.workspaceClosed);
-    this.refreshRecentWorkspaces();
+    context.getApplicationContext().eventHub.on(SETTINGS_CHANGED, this.settingsChanged);
+    context.getApplicationContext().eventHub.on(BEFORE_SCREENSHOT, this.beforeScreenshot);
+    this.settingsChanged();
   }
 
   aboutToDisappear(): void {
@@ -82,6 +98,8 @@ struct HomePage {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     context.getApplicationContext().eventHub.off('huiwen.workspace.ready', this.workspaceReady);
     context.getApplicationContext().eventHub.off('huiwen.workspace.closed', this.workspaceClosed);
+    context.getApplicationContext().eventHub.off(SETTINGS_CHANGED, this.settingsChanged);
+    context.getApplicationContext().eventHub.off(BEFORE_SCREENSHOT, this.beforeScreenshot);
     this.recentRefreshPending = false;
   }
 
@@ -105,7 +123,7 @@ struct HomePage {
     this.recentError = '';
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      const workspaces = await listRecentWorkspaces(context);
+      const workspaces = await listRecentWorkspaces(context, this.recentLimit);
       if (this.homeVisible) {
         this.recentWorkspaces = workspaces;
       }
@@ -123,7 +141,7 @@ struct HomePage {
 
   private async openWorkspace(taskPath: string = '', mode: string = DocumentMode.Convert,
     kind: string = DocumentKind.PDF): Promise<void> {
-    if (this.workspaceLaunching) {
+    if (this.workspaceLaunching || isScreenshotRunning()) {
       return;
     }
     // 先收起首页子窗口，避免它残留在即将显示的 Qt 工作区上方。
@@ -160,33 +178,12 @@ struct HomePage {
   }
 
   private async takeScreenshot(): Promise<void> {
-    if (this.screenshotStarting) {
-      return;
-    }
-    this.screenshotStarting = true;
     this.closeMenu();
     try {
-      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      // 截图授权在首页完成，Qt 只负责框选和标注，不依赖 QtOhExtras。
-      const permissions: Permissions[] = ['ohos.permission.CUSTOM_SCREEN_CAPTURE'];
-      const result = await abilityAccessCtrl.createAtManager().requestPermissionsFromUser(context, permissions);
-      if (result.authResults.length === 0 ||
-        result.authResults[0] !== abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED) {
-        throw new Error('未获得屏幕截图权限');
-      }
-      // 先缓存桌面再启动宿主，避免冷启动全屏窗口混入截图底图。
-      await nativeBridge.prepareScreenshot();
-      // 截图宿主直接全屏且不播放启动动画，避免先显示默认浮动窗口。
-      await context.startAbility({ bundleName: 'cn.com.HuiWenMCP', abilityName: 'QtScreenshotAbility' }, {
-        windowMode: AbilityConstant.WindowMode.WINDOW_MODE_FULLSCREEN,
-        withAnimation: false
-      });
+      await startScreenshot();
     } catch (error) {
-      nativeBridge.clearPreparedScreenshot();
       hilog.error(0xFF00, 'HuiwenMCP', 'HUIWEN_SCREENSHOT_START_FAILED: %{public}s', (error as Error).message);
       this.getUIContext().getPromptAction().showToast({ message: `截图启动失败：${(error as Error).message}` });
-    } finally {
-      this.screenshotStarting = false;
     }
   }
 
@@ -225,6 +222,12 @@ struct HomePage {
         onOpen: (workspace: RecentWorkspace) =>
           this.openWorkspace(workspace.taskPath, workspace.mode, workspace.kind)
       })
+    } else if (this.activeFeature === HomeFeature.Settings) {
+      SettingsDialog({
+        dialogWidth: this.homeDialogWidth,
+        contentHeight: Math.max(160, Math.min(500, this.availableHeight - 150)),
+        onCloseRequested: () => { this.closeHomeDialog(); }
+      })
     } else {
       HomeFormatDialog({
         feature: this.activeFeature,
@@ -244,13 +247,14 @@ struct HomePage {
   }
 
   private async selectFeature(feature: HomeFeature): Promise<void> {
-    if (this.workspaceLaunching || this.homeDialogOpening || this.homeDialogId >= 0) {
+    if (this.workspaceLaunching || isScreenshotRunning() || this.homeDialogOpening || this.homeDialogId >= 0) {
       return;
     }
     this.activeFeature = feature;
     // 文件管理与全部工作区复用首页弹窗的打开、关闭流程，背板宽度与内容一致。
     this.homeDialogWidth = feature === HomeFeature.FileManager ? Math.min(760, this.availableWidth - 32) :
-      feature === HomeFeature.Workspaces ? Math.min(720, this.availableWidth - 32) : HOME_FORMAT_DIALOG_WIDTH;
+      feature === HomeFeature.Workspaces ? Math.min(720, this.availableWidth - 32) :
+        feature === HomeFeature.Settings ? Math.min(660, this.availableWidth - 32) : HOME_FORMAT_DIALOG_WIDTH;
     this.workspaceListHeight = Math.min(WORKSPACE_PAGE_SIZE * 48 +
       (WORKSPACE_PAGE_SIZE - 1) * 8, Math.max(48, this.availableHeight - 160));
     this.menuOpen = false;
@@ -264,10 +268,10 @@ struct HomePage {
         },
         alignment: DialogAlignment.Center,
         // 文件管理在主窗口内承载，避免子窗口内的系统右键菜单被拒绝显示。
-        showInSubWindow: feature !== HomeFeature.FileManager,
+        showInSubWindow: feature !== HomeFeature.FileManager && feature !== HomeFeature.Settings,
         // PromptAction 的独立子窗口不能同时启用模态。
-        isModal: false,
-        autoCancel: true,
+        isModal: feature === HomeFeature.Settings,
+        autoCancel: feature !== HomeFeature.Settings,
         // 文件管理使用透明承载层，内部面板自行缩放并绘制背板；其他弹窗保持原尺寸。
         width: feature === HomeFeature.FileManager ? '100%' : this.homeDialogWidth,
         height: feature === HomeFeature.FileManager ? '100%' : undefined,
@@ -279,6 +283,9 @@ struct HomePage {
           color: '#22000000', offsetX: 0, offsetY: feature === HomeFeature.FileManager ? 0 : 6
         },
         onWillDismiss: (action: DismissDialogAction) => {
+          if (feature === HomeFeature.Settings && AppStorage.get<boolean>('storageBusy')) {
+            return;
+          }
           this.homeDialogId = -1;
           action.dismiss();
         }
@@ -346,9 +353,9 @@ struct HomePage {
             },
             onScreenshot: () => this.takeScreenshot(),
             onAppearance: (mode: HomeAppearance) => this.changeAppearance(mode),
-            onPlaceholder: (name: string) => {
+            onSettings: () => {
               this.closeMenu();
-              this.getUIContext().getPromptAction().showToast({ message: `${name}功能暂未开放` });
+              this.selectFeature(HomeFeature.Settings);
             }
           })
           .margin({ left: this.menuLeft(), bottom: this.menuBottom() })
@@ -559,10 +566,14 @@ struct HomePage {
           workspaces: this.recentWorkspaces,
           loading: this.recentLoading,
           error: this.recentError,
+          maxListHeight: Math.max(0, Math.min(240, this.contentBottom - this.recentTop - 44)),
           available: !this.workspaceLaunching && !this.homeDialogOpening && this.homeDialogId < 0,
           onOpen: (workspace: RecentWorkspace) =>
             this.openWorkspace(workspace.taskPath, workspace.mode, workspace.kind),
           onViewAll: () => this.selectFeature(HomeFeature.Workspaces)
+        })
+        .onAreaChange((_oldArea: Area, area: Area) => {
+          this.recentTop = Number(area.globalPosition.y);
         })
         .margin({ top: 70 })
         .flexShrink(0)
@@ -574,6 +585,9 @@ struct HomePage {
       .alignItems(HorizontalAlign.Start)
       .backgroundColor($r('app.color.home_surface'))
       .borderRadius(24)
+      .onAreaChange((_oldArea: Area, area: Area) => {
+        this.contentBottom = Number(area.globalPosition.y) + Number(area.height) - 24;
+      })
     }
     .layoutWeight(1)
     .height('100%')

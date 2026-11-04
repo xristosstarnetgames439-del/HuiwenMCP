@@ -16,8 +16,8 @@ export struct HomeMoreMenu {
   onAbout: () => void = () => {};
   onFileManager: () => void = () => {};
   onScreenshot: () => void = () => {};
+  onSettings: () => void = () => {};
   onAppearance: (appearance: HomeAppearance) => void = () => {};
-  onPlaceholder: (name: string) => void = () => {};
 
   private focusMenu(): void {
     try {
@@ -136,7 +136,7 @@ export struct HomeMoreMenu {
           this.menuItem('截图', $r('app.media.menu_capture'), () => this.onScreenshot())
           this.menuItem('文件管理', $r('app.media.menu_folder'), () => this.onFileManager())
           this.separator()
-          this.menuItem('设置', $r('app.media.menu_settings'), () => this.onPlaceholder('设置'))
+          this.menuItem('应用设置', $r('app.media.menu_settings'), () => this.onSettings())
         }
         .width(HOME_MENU_WIDTH)
         .padding(6)

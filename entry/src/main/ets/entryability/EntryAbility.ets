@@ -6,6 +6,7 @@ import hilog from '@ohos.hilog';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { Configuration } from '@kit.AbilityKit';
 import { applyHomeWindowColors, initializeHomeAppearance } from '../utils/HomeAppearance';
+import { registerScreenshotHost, releaseScreenshotHost } from '../services/screenshot/ScreenshotService';
 
 
 export default class EntryAbility extends UIAbility {
@@ -50,6 +51,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onDestroy() {
+    releaseScreenshotHost(this.context);
     hilog.info(this.domain, this.tag, '%{public}s', 'Ability onDestroy');
   }
 
@@ -62,6 +64,8 @@ export default class EntryAbility extends UIAbility {
         this.context.getApplicationContext().eventHub.emit('huiwen.home.ready', err.message);
         return;
       }
+      // 监听器只注册一次，宿主按当前首页窗口更新；后台时仍能响应全局截图快捷键。
+      registerScreenshotHost(this.context, windowStage);
       try {
         const mainWindow = windowStage.getMainWindowSync();
         this.mainWindow = mainWindow;

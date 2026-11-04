@@ -24,4 +24,9 @@ class SandboxStore
     static QString validateOutput(const QString &filesDir, const QString &path);
     // 接受 preview 任务根目录或 edit/convert 的 input/output，不要求已有输出文件。
     static QString validateTaskDirectory(const QString &filesDir, const QString &path);
+    // 设置维护：复制并校验三类工作区；不覆盖已有任务、不修改源目录。
+    static QString copyWorkspaces(const QString &sourceRoot, const QString &targetRoot);
+    // inputs 仅删 input；duplicates 同模式同名保留最近一份；workspaces 用于迁移后清理源副本。
+    static int cleanWorkspaces(const QString &filesDir, const QString &mode,
+                               const QString &copiedRoot = {});
 };

@@ -8,6 +8,8 @@ import qpa from 'libplugins_platforms_qopenharmony.so';
 import nativeBridge, { HarmonySandboxDocument } from 'libhuiwen_native.so';
 import { DocumentKind, DocumentMode, pickDocumentToSandbox } from '../utils/DocumentStore';
 import { CefWorkspaceProxy } from '../utils/CefPlatform';
+import { readSettings } from '../services/settings/AppSettings';
+import { ensureWorkspaceAccess } from '../services/settings/WorkspaceStorage';
 
 interface WorkspaceEvent {
   action: string;
@@ -38,6 +40,7 @@ export default class QtWorkspaceAbility extends UIAbility {
   private restoring: boolean = false;
   private destroyed: boolean = false;
   private closing: boolean = false;
+  private exitOnClose: boolean = false;
   private cefProxy: CefWorkspaceProxy | undefined = undefined;
   // 首页确认显示后才让 Qt 释放浏览器；只消费本次关闭的一次回执。
   private homeReady = (error: string = ''): void => {
@@ -55,6 +58,7 @@ export default class QtWorkspaceAbility extends UIAbility {
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     super.onCreate(want, launchParam);
+    AppStorage.setOrCreate('documentWorkspaceActive', true);
     this.pendingTask = this.requestedTask(want);
     this.mode = String(want.parameters?.huiwenMode ?? DocumentMode.Convert);
     this.kind = String(want.parameters?.huiwenKind ?? DocumentKind.PDF);
@@ -77,7 +81,7 @@ export default class QtWorkspaceAbility extends UIAbility {
     try {
       // 只传任务标识，实际文件路径由 C++ 重新校验；读取阶段不更新时间。
       const document: HarmonySandboxDocument = await nativeBridge.harmonyLoadTask(
-        this.context.getApplicationContext().filesDir, taskPath);
+        await ensureWorkspaceAccess(this.context), taskPath);
       if (this.destroyed || this.closing || this.pendingTask !== taskPath) {
         return;
       }
@@ -143,7 +147,12 @@ export default class QtWorkspaceAbility extends UIAbility {
       return;
     }
     if (event.action === 'closed' && this.closing) {
-      await this.context.terminateSelf();
+      if (this.exitOnClose) {
+        // 用户选择退出应用：CEF 已释放，结束本应用进程及任务栈，避免常驻 Qt 循环残留。
+        await this.context.getApplicationContext().killAllProcesses(true);
+      } else {
+        await this.context.terminateSelf();
+      }
       return;
     }
     if (this.closing) {
@@ -204,7 +213,7 @@ export default class QtWorkspaceAbility extends UIAbility {
       } else if (event.action === 'openDirectory') {
         // 顶部文件菜单只打开当前任务目录，路径仍由通用 C++ 沙箱规则校验。
         const directory: string = nativeBridge.harmonyValidateTaskDirectory(
-          this.context.getApplicationContext().filesDir, event.path);
+          await ensureWorkspaceAccess(this.context), event.path);
         await this.openFileManager(directory);
       }
     } catch (error) {
@@ -228,6 +237,12 @@ export default class QtWorkspaceAbility extends UIAbility {
     // 保留原关闭顺序，仅停止消费本次未完成的恢复结果。
     this.pendingTask = '';
     this.restoring = false;
+    this.exitOnClose = readSettings(this.context).closeAction === 'exit';
+    if (this.exitOnClose) {
+      // 沿用 Qt/CEF 的释放回执，收到 closed 后才退出应用。
+      nativeBridge.workspaceReply(JSON.stringify({ action: 'close' }));
+      return;
+    }
     this.context.getApplicationContext().eventHub.on('huiwen.home.ready', this.homeReady);
     try {
       await this.context.startAbility({ bundleName: 'cn.com.HuiWenMCP', abilityName: 'EntryAbility' });
@@ -238,7 +253,7 @@ export default class QtWorkspaceAbility extends UIAbility {
 
   private async openOutputLocation(path: string): Promise<void> {
     const outputPath: string = nativeBridge.harmonyValidateOutput(
-      this.context.getApplicationContext().filesDir, path);
+      await ensureWorkspaceAccess(this.context), path);
     await this.openFileManager(outputPath);
   }
 
@@ -263,6 +278,7 @@ export default class QtWorkspaceAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    AppStorage.setOrCreate('documentWorkspaceActive', false);
     this.destroyed = true;
     this.context.getApplicationContext().eventHub.off('huiwen.home.ready', this.homeReady);
     this.pendingTask = '';

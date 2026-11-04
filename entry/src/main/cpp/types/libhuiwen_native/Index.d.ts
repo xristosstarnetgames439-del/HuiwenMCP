@@ -48,6 +48,10 @@ interface HuiwenNative {
   harmonyLoadTask(filesDir: string, taskPath: string): Promise<HarmonySandboxDocument>;
   // 异步读取文件快照，按工作区最近使用时间降序；查询不更新时间。
   harmonyListFiles(filesDir: string): Promise<HarmonySandboxFile[]>;
+  // 复制并按 SHA-256 校验工作区，保留源文件；返回真实目标根目录，目标已有任务时拒绝覆盖。
+  harmonyCopyWorkspaces(sourceRoot: string, targetRoot: string): Promise<string>;
+  // inputs 只清理 input；duplicates 保留最近同名同模式任务；workspaces 清理迁移前副本。
+  harmonyCleanWorkspaces(root: string, mode: string, copiedRoot?: string): Promise<number>;
   // 将模式、文档类型与回调一起交给 Qt；截图使用 screenshot 模式和空 kind。
   // 回调仍在 ArkTS 线程处理系统操作。
   registerWorkspace(callback: (event: string) => void, mode: string, kind: string): void;

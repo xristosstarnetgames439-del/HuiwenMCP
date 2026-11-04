@@ -6,6 +6,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import qpa from 'libplugins_platforms_qopenharmony.so';
 import nativeBridge from 'libhuiwen_native.so';
 import { showScreenToast } from '../services/screenshot/ScreenToast';
+import { finishScreenshot } from '../services/screenshot/ScreenshotService';
 
 interface ScreenshotResult {
   action: string;
@@ -79,6 +80,7 @@ export default class QtScreenshotAbility extends UIAbility {
   }
 
   private failStart(error: Error): void {
+    finishScreenshot();
     nativeBridge.clearPreparedScreenshot();
     this.context.getApplicationContext().eventHub.off('huiwen.screenshot.contentReady', this.contentReady);
     hilog.error(0xFF00, 'HuiwenScreenshot', 'HUIWEN_SCREENSHOT_START_FAILED: %{public}s', error.message);
@@ -90,6 +92,7 @@ export default class QtScreenshotAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    finishScreenshot();
     nativeBridge.clearPreparedScreenshot();
     this.context.getApplicationContext().eventHub.off('huiwen.screenshot.contentReady', this.contentReady);
     // 等 QPA 标记宿主已销毁后，再解除本次 Qt 会话，沿用工作区的释放顺序。

@@ -2,6 +2,7 @@
 @Component
 export struct HomeDialog {
   @Prop title: string = '';
+  @Prop titleIcon: Resource | undefined = undefined;
   @Prop dialogWidth: number = 360;
   // 列表弹窗可铺到背板右缘，由数据行自行预留滚动条空间。
   @Prop contentRightPadding: number = 24;
@@ -11,12 +12,23 @@ export struct HomeDialog {
   build() {
     Stack({ alignContent: Alignment.TopEnd }) {
       Column({ space: 16 }) {
-        Text(this.title)
-          .fontSize(18)
-          .fontWeight(FontWeight.Normal)
-          .fontColor($r('app.color.home_text'))
-          .width('100%')
-          .textAlign(TextAlign.Start)
+        Row({ space: 10 }) {
+          if (this.titleIcon) {
+            Image(this.titleIcon)
+              .width(22)
+              .height(22)
+              .objectFit(ImageFit.Contain)
+              .draggable(false)
+          }
+          Text(this.title)
+            .fontSize(18)
+            .fontWeight(FontWeight.Normal)
+            .fontColor($r('app.color.home_text'))
+            .layoutWeight(1)
+            .textAlign(TextAlign.Start)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
         this.content()
       }
       .width('100%')

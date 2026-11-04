@@ -21,6 +21,8 @@
       { "name": "ohos.permission.SET_WINDOW_TRANSPARENT" },
       // 屏幕级复制提示使用独立全局浮窗；受限权限须在签名 Profile 中授权。
       { "name": "ohos.permission.SYSTEM_FLOAT_WINDOW" },
+      // 系统选择的自定义存储目录需持久授权，重启后再次激活读写权限。
+      { "name": "ohos.permission.FILE_ACCESS_PERSIST" },
       // 首页请求用户授权，独立 Qt 截图窗口负责抓屏。
       {
         "name": "ohos.permission.CUSTOM_SCREEN_CAPTURE",

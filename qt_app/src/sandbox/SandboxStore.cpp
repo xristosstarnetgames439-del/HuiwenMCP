@@ -1,17 +1,23 @@
 /* 通用沙箱实现：以目录关联文件，用目录修改时间记录使用时间，不维护额外索引文件。 */
 #include "SandboxStore.h"
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSet>
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <stdexcept>
 
 namespace
 {
-void fail(const QString &message) { throw std::runtime_error(message.toStdString()); }
+void fail(const QString &message)
+{
+    throw std::runtime_error(message.toStdString());
+}
 
 bool validMode(const QString &mode)
 {
@@ -160,14 +166,185 @@ QVector<DocumentItem> scan(const QString &filesDir, const QString &mode)
             }
         }
     }
-    std::sort(result.begin(), result.end(),
-              [](const DocumentItem &a, const DocumentItem &b) {
-                  return a.lastUsedAt == b.lastUsedAt ? a.taskPath > b.taskPath
-                                                      : a.lastUsedAt > b.lastUsedAt;
-              });
+    std::sort(result.begin(), result.end(), [](const DocumentItem &a, const DocumentItem &b) {
+        return a.lastUsedAt == b.lastUsedAt ? a.taskPath > b.taskPath : a.lastUsedAt > b.lastUsedAt;
+    });
+    return result;
+}
+// 设置操作在 NAPI 工作线程运行，使用标准库文件流，避免在 Qt 启动前创建 QFile 对象。
+std::filesystem::path fsPath(const QString &path)
+{
+    return std::filesystem::u8path(path.toUtf8().constData());
+}
+
+QByteArray fileDigest(const std::filesystem::path &path)
+{
+    std::ifstream input(path, std::ios::binary);
+    if (!input)
+        fail(QStringLiteral("无法读取迁移文件"));
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    char buffer[64 * 1024];
+    while (input.read(buffer, sizeof(buffer)) || input.gcount() > 0)
+        hash.addData(buffer, static_cast<int>(input.gcount()));
+    if (!input.eof())
+        fail(QStringLiteral("读取迁移文件失败"));
+    return hash.result();
+}
+
+void copyTree(const std::filesystem::path &source, const std::filesystem::path &target)
+{
+    const auto status = std::filesystem::symlink_status(source);
+    if (std::filesystem::is_directory(status))
+    {
+        if (!std::filesystem::create_directory(target))
+            fail(QStringLiteral("迁移目标已存在，未覆盖文件"));
+        for (const auto &entry : std::filesystem::directory_iterator(source))
+            copyTree(entry.path(), target / entry.path().filename());
+    }
+    else if (std::filesystem::is_regular_file(status))
+    {
+        if (!std::filesystem::copy_file(source, target) || fileDigest(source) != fileDigest(target))
+            fail(QStringLiteral("迁移文件校验失败，原文件已保留"));
+    }
+    else
+        fail(QStringLiteral("工作区包含链接或特殊文件，取消迁移"));
+    std::filesystem::last_write_time(target, std::filesystem::last_write_time(source));
+}
+
+bool sameTree(const std::filesystem::path &source, const std::filesystem::path &target)
+{
+    const auto from = std::filesystem::symlink_status(source);
+    const auto to = std::filesystem::symlink_status(target);
+    if (std::filesystem::is_regular_file(from) && std::filesystem::is_regular_file(to))
+        return fileDigest(source) == fileDigest(target);
+    if (!std::filesystem::is_directory(from) || !std::filesystem::is_directory(to))
+        return false;
+    size_t count = 0;
+    for (const auto &entry : std::filesystem::directory_iterator(source))
+    {
+        ++count;
+        if (!sameTree(entry.path(), target / entry.path().filename()))
+            return false;
+    }
+    return count == static_cast<size_t>(std::distance(std::filesystem::directory_iterator(target),
+                                                      std::filesystem::directory_iterator{}));
+}
+
+QStringList taskDirectories(const QString &root)
+{
+    QStringList result;
+    for (const QString &mode : {QString("preview"), QString("edit"), QString("convert")})
+    {
+        const QString category = root + "/" + mode;
+        if (!QFileInfo::exists(category))
+            continue;
+        if (QFileInfo(category).isSymLink() || QFileInfo(category).canonicalFilePath() != category)
+            fail(QStringLiteral("工作区分类目录无效"));
+        for (const auto &task :
+             QDir(category).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks))
+        {
+            if (validTaskName(task.fileName()))
+                result.push_back(checkedTask(root, task.absoluteFilePath()));
+        }
+    }
     return result;
 }
 } // namespace
+
+QString SandboxStore::copyWorkspaces(const QString &sourceRoot, const QString &targetRoot)
+{
+    const QString source = rootPath(sourceRoot);
+    const QString target = rootPath(targetRoot, true);
+    if (source == target)
+        return target;
+    if (source.startsWith(target + "/") || target.startsWith(source + "/"))
+        fail(QStringLiteral("新旧存储目录不能互相包含"));
+    const auto tasks = taskDirectories(source);
+    // 设置只迁移三类业务目录；已有内容时拒绝合并，避免覆盖另一份工作区。
+    for (const QString &mode : {QString("preview"), QString("edit"), QString("convert")})
+    {
+        const QString directory = ensureChild(target, mode);
+        if (!QDir(directory).isEmpty())
+            fail(QStringLiteral("目标已有工作区，请选择空目录或先整理目标文件"));
+    }
+    QStringList created;
+    try
+    {
+        for (const QString &task : tasks)
+        {
+            const QString destination = target + "/" + QDir(source).relativeFilePath(task);
+            // 原子占位成功后才加入回收列表；并发出现的已有目录也不能被误删。
+            if (!std::filesystem::create_directory(fsPath(destination)))
+                fail(QStringLiteral("迁移目标已存在，未覆盖文件"));
+            created.push_back(destination);
+            for (const auto &entry : std::filesystem::directory_iterator(fsPath(task)))
+                copyTree(entry.path(), fsPath(destination) / entry.path().filename());
+            std::filesystem::last_write_time(fsPath(destination),
+                                             std::filesystem::last_write_time(fsPath(task)));
+        }
+    }
+    catch (...)
+    {
+        for (const auto &path : created)
+        {
+            std::error_code ignored;
+            std::filesystem::remove_all(fsPath(path), ignored);
+        }
+        throw;
+    }
+    return target;
+}
+
+int SandboxStore::cleanWorkspaces(const QString &filesDir, const QString &mode,
+                                  const QString &copiedRoot)
+{
+    const QString root = rootPath(filesDir);
+    QStringList removals;
+    if (mode == "duplicates")
+    {
+        QSet<QString> retained;
+        // scan 已按最近使用时间排序；同名不等于内容相同，删除由设置页二次确认。
+        for (const auto &document : scan(root, "all"))
+        {
+            const QString key = document.mode + "\n" + document.name;
+            if (retained.contains(key))
+                removals.push_back(document.taskPath);
+            else
+                retained.insert(key);
+        }
+    }
+    else if (mode == "inputs" || mode == "workspaces")
+    {
+        const QString copied = mode == "workspaces" ? rootPath(copiedRoot) : QString();
+        if (mode == "workspaces" && copied == root)
+            fail(QStringLiteral("不能将源工作区作为迁移副本清理"));
+        for (const auto &task : taskDirectories(root))
+        {
+            const QString path = mode == "inputs" ? task + "/input" : task;
+            const QFileInfo info(path);
+            if (!info.exists())
+                continue;
+            if (info.isSymLink() || info.canonicalFilePath() != path)
+                fail(QStringLiteral("清理路径无效，未跟随符号链接"));
+            if (mode == "workspaces" &&
+                !sameTree(fsPath(task), fsPath(copied + "/" + QDir(root).relativeFilePath(task))))
+                fail(QStringLiteral("源文件已变化或副本不完整，旧目录已保留"));
+            removals.push_back(path);
+        }
+    }
+    else
+        fail(QStringLiteral("不支持的清理类型"));
+    int count = 0;
+    for (const auto &path : removals)
+    {
+        std::error_code error;
+        std::filesystem::remove_all(fsPath(path), error);
+        if (error)
+            fail(QStringLiteral("部分缓存未清理，请检查目录权限：") + path);
+        ++count;
+    }
+    return count;
+}
 
 DocumentItem SandboxStore::createDocument(const QString &filesDir, const QString &name,
                                           const QString &kind, const QString &mode)

@@ -2,10 +2,10 @@
 #include "harmony_sandbox.h"
 #ifdef Q_OS_OPENHARMONY
 #include "sandbox/SandboxStore.h"
-#include <napi/native_api.h>
 #include <climits>
 #include <fcntl.h>
 #include <memory>
+#include <napi/native_api.h>
 #include <stdexcept>
 #include <unistd.h>
 
@@ -16,7 +16,9 @@ enum class Operation
     Import,
     Recent,
     Files,
-    LoadTask
+    LoadTask,
+    CopyWorkspaces,
+    CleanWorkspaces
 };
 
 struct SandboxWork
@@ -28,9 +30,11 @@ struct SandboxWork
     QString name;
     QString kind;
     QString mode;
+    QString copiedRoot;
     int fd = -1;
     int limit = 20;
     int offset = 0;
+    int cleaned = 0;
     HarmonySandboxDocument document;
     QVector<DocumentItem> documents;
     QVector<SandboxFile> files;
@@ -48,7 +52,8 @@ bool readString(napi_env env, napi_value value, QString &result)
     napi_valuetype type;
     size_t length = 0;
     if (napi_typeof(env, value, &type) != napi_ok || type != napi_string ||
-        napi_get_value_string_utf8(env, value, nullptr, 0, &length) != napi_ok || length == 0 || length > 4096)
+        napi_get_value_string_utf8(env, value, nullptr, 0, &length) != napi_ok || length == 0 ||
+        length > 4096)
         return false;
     QByteArray bytes(static_cast<int>(length + 1), '\0');
     size_t copied = 0;
@@ -116,13 +121,17 @@ void execute(napi_env, void *data)
     try
     {
         if (task->operation == Operation::Import)
-            task->document =
-                HarmonySandbox::importDocument(task->root, task->name, task->fd, task->kind, task->mode);
+            task->document = HarmonySandbox::importDocument(task->root, task->name, task->fd,
+                                                            task->kind, task->mode);
         else if (task->operation == Operation::Recent)
             task->documents =
                 SandboxStore::recentDocuments(task->root, task->mode, task->limit, task->offset);
         else if (task->operation == Operation::Files)
             task->files = SandboxStore::listFiles(task->root);
+        else if (task->operation == Operation::CopyWorkspaces)
+            task->name = SandboxStore::copyWorkspaces(task->root, task->name);
+        else if (task->operation == Operation::CleanWorkspaces)
+            task->cleaned = SandboxStore::cleanWorkspaces(task->root, task->mode, task->copiedRoot);
         else
             task->document = SandboxStore::loadTask(task->root, task->name);
     }
@@ -140,6 +149,10 @@ void complete(napi_env env, napi_status status, void *data)
         napi_value result;
         if (task->operation == Operation::Import || task->operation == Operation::LoadTask)
             result = documentValue(env, task->document);
+        else if (task->operation == Operation::CopyWorkspaces)
+            result = stringValue(env, task->name);
+        else if (task->operation == Operation::CleanWorkspaces)
+            napi_create_int32(env, task->cleaned, &result);
         else if (task->operation == Operation::Files)
         {
             napi_create_array_with_length(env, task->files.size(), &result);
@@ -257,11 +270,42 @@ napi_value loadTask(napi_env env, napi_callback_info info)
     if (napi_get_cb_info(env, info, &count, values, nullptr, nullptr) != napi_ok || count != 2 ||
         !readString(env, values[0], task->root) || !readString(env, values[1], task->name))
     {
-        napi_throw_type_error(env, "HARMONY_SANDBOX_INVALID_ARGUMENT", "恢复任务需要沙箱根目录和任务目录");
+        napi_throw_type_error(env, "HARMONY_SANDBOX_INVALID_ARGUMENT",
+                              "恢复任务需要沙箱根目录和任务目录");
         return nullptr;
     }
     task->operation = Operation::LoadTask;
     return queue(env, std::move(task));
+}
+
+// 设置维护与文件导入复用异步队列，不在 ArkTS UI 线程复制或删除文件。
+napi_value storageMaintenance(napi_env env, napi_callback_info info, Operation operation)
+{
+    size_t count = 3;
+    napi_value values[3];
+    auto task = std::make_unique<SandboxWork>();
+    if (napi_get_cb_info(env, info, &count, values, nullptr, nullptr) != napi_ok ||
+        (count != 2 && count != 3) || !readString(env, values[0], task->root) ||
+        !readString(env, values[1], task->name) ||
+        (count == 3 && !readString(env, values[2], task->copiedRoot)))
+    {
+        napi_throw_type_error(env, "HARMONY_SANDBOX_INVALID_ARGUMENT",
+                              "需要工作区根目录和目标目录或清理类型");
+        return nullptr;
+    }
+    task->operation = operation;
+    task->mode = task->name;
+    return queue(env, std::move(task));
+}
+
+napi_value copyWorkspaces(napi_env env, napi_callback_info info)
+{
+    return storageMaintenance(env, info, Operation::CopyWorkspaces);
+}
+
+napi_value cleanWorkspaces(napi_env env, napi_callback_info info)
+{
+    return storageMaintenance(env, info, Operation::CleanWorkspaces);
 }
 
 enum class PathOperation
@@ -278,7 +322,8 @@ napi_value pathOperation(napi_env env, napi_callback_info info, PathOperation op
     if (napi_get_cb_info(env, info, &count, values, nullptr, nullptr) != napi_ok || count != 2 ||
         !readString(env, values[0], root) || !readString(env, values[1], path))
     {
-        napi_throw_type_error(env, "HARMONY_SANDBOX_INVALID_ARGUMENT", "需要沙箱目录和文件或目录路径");
+        napi_throw_type_error(env, "HARMONY_SANDBOX_INVALID_ARGUMENT",
+                              "需要沙箱目录和文件或目录路径");
         return nullptr;
     }
     try
@@ -304,7 +349,7 @@ napi_value validateTaskDirectory(napi_env env, napi_callback_info info)
     return pathOperation(env, info, PathOperation::ValidateTaskDirectory);
 }
 
-}
+} // namespace
 
 void InitHarmonySandbox(napi_env env, napi_value exports)
 {
@@ -319,6 +364,10 @@ void InitHarmonySandbox(napi_env env, napi_value exports)
          napi_default, nullptr},
         {"harmonyLoadTask", nullptr, loadTask, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"harmonyListFiles", nullptr, listFiles, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"harmonyCopyWorkspaces", nullptr, copyWorkspaces, nullptr, nullptr, nullptr, napi_default,
+         nullptr},
+        {"harmonyCleanWorkspaces", nullptr, cleanWorkspaces, nullptr, nullptr, nullptr,
+         napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(methods) / sizeof(methods[0]), methods);
 }
