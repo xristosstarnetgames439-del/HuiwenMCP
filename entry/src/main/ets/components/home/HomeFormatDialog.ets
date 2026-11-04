@@ -11,7 +11,8 @@ export enum HomeFeature {
   Convert,
   Workspaces,
   FileManager,
-  Settings
+  Settings,
+  Screenshot
 }
 
 @Component

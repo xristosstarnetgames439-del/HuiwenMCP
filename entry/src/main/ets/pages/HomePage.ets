@@ -14,9 +14,10 @@ import { HomeMoreMenu, HOME_MENU_WIDTH, HOME_MENU_GAP } from '../components/home
 import { HomeAboutDialog } from '../components/home/HomeAboutDialog';
 import { FileManagerDialog } from '../components/fileManager/FileManagerDialog';
 import { SettingsDialog } from '../components/settings/SettingsDialog';
+import { ScreenshotDialog } from '../components/screenshot/ScreenshotDialog';
+import { closeScreenshotPreview } from '../services/screenshot/ScreenshotPreview';
 import { readSettings, SETTINGS_CHANGED } from '../services/settings/AppSettings';
-import { BEFORE_SCREENSHOT, CANCEL_SHORTCUT_RECORDING, isScreenshotRunning,
-  startScreenshot } from '../services/screenshot/ScreenshotService';
+import { BEFORE_SCREENSHOT, CANCEL_SHORTCUT_RECORDING, isScreenshotRunning } from '../services/screenshot/ScreenshotService';
 import { FileManagerFile } from '../models/FileManagerFile';
 import { openFileDirectory } from '../services/FileManagerService';
 import { applyHomeAppearance, HomeAppearance } from '../utils/HomeAppearance';
@@ -62,6 +63,9 @@ struct HomePage {
     this.menuOpen = false;
     this.closeHomeDialog();
     this.closeAboutDialog();
+    closeScreenshotPreview().catch((error: Error) => {
+      hilog.warn(0xFF00, 'HuiwenMCP', '关闭截图预览失败：%{public}s', error.message);
+    });
   };
   // 只等待窗口显示，不等待任务恢复，也不接收工作区业务错误。
   private workspaceReady = (): void => {
@@ -96,6 +100,9 @@ struct HomePage {
     this.menuOpen = false;
     this.closeAboutDialog();
     this.closeHomeDialog();
+    closeScreenshotPreview().catch((error: Error) => {
+      hilog.warn(0xFF00, 'HuiwenMCP', '关闭截图预览失败：%{public}s', error.message);
+    });
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     context.getApplicationContext().eventHub.off('huiwen.workspace.ready', this.workspaceReady);
     context.getApplicationContext().eventHub.off('huiwen.workspace.closed', this.workspaceClosed);
@@ -178,16 +185,6 @@ struct HomePage {
     }
   }
 
-  private async takeScreenshot(): Promise<void> {
-    this.closeMenu();
-    try {
-      await startScreenshot();
-    } catch (error) {
-      hilog.error(0xFF00, 'HuiwenMCP', 'HUIWEN_SCREENSHOT_START_FAILED: %{public}s', (error as Error).message);
-      this.getUIContext().getPromptAction().showToast({ message: `截图启动失败：${(error as Error).message}` });
-    }
-  }
-
   private closeHomeDialog(): boolean {
     if (this.homeDialogId < 0) {
       return true;
@@ -229,6 +226,12 @@ struct HomePage {
         contentHeight: Math.max(160, Math.min(500, this.availableHeight - 150)),
         onCloseRequested: () => { this.closeHomeDialog(); }
       })
+    } else if (this.activeFeature === HomeFeature.Screenshot) {
+      ScreenshotDialog({
+        dialogWidth: this.homeDialogWidth,
+        contentHeight: Math.max(120, Math.min(360, this.availableHeight - 150)),
+        onCloseRequested: () => { this.closeHomeDialog(); }
+      })
     } else {
       HomeFormatDialog({
         feature: this.activeFeature,
@@ -255,7 +258,8 @@ struct HomePage {
     // 文件管理与全部工作区复用首页弹窗的打开、关闭流程，背板宽度与内容一致。
     this.homeDialogWidth = feature === HomeFeature.FileManager ? Math.min(760, this.availableWidth - 32) :
       feature === HomeFeature.Workspaces ? Math.min(720, this.availableWidth - 32) :
-        feature === HomeFeature.Settings ? Math.min(660, this.availableWidth - 32) : HOME_FORMAT_DIALOG_WIDTH;
+        feature === HomeFeature.Settings ? Math.min(660, this.availableWidth - 32) :
+          feature === HomeFeature.Screenshot ? Math.min(720, this.availableWidth - 32) : HOME_FORMAT_DIALOG_WIDTH;
     this.workspaceListHeight = Math.min(WORKSPACE_PAGE_SIZE * 48 +
       (WORKSPACE_PAGE_SIZE - 1) * 8, Math.max(48, this.availableHeight - 160));
     this.menuOpen = false;
@@ -269,7 +273,8 @@ struct HomePage {
         },
         alignment: DialogAlignment.Center,
         // 文件管理在主窗口内承载，避免子窗口内的系统右键菜单被拒绝显示。
-        showInSubWindow: feature !== HomeFeature.FileManager && feature !== HomeFeature.Settings,
+        showInSubWindow: feature !== HomeFeature.FileManager && feature !== HomeFeature.Settings &&
+          feature !== HomeFeature.Screenshot,
         // PromptAction 的独立子窗口不能同时启用模态。
         isModal: feature === HomeFeature.Settings,
         autoCancel: true,
@@ -357,7 +362,7 @@ struct HomePage {
               this.closeMenu();
               this.selectFeature(HomeFeature.FileManager);
             },
-            onScreenshot: () => this.takeScreenshot(),
+            onScreenshot: () => this.selectFeature(HomeFeature.Screenshot),
             onAppearance: (mode: HomeAppearance) => this.changeAppearance(mode),
             onSettings: () => {
               this.closeMenu();

@@ -13,14 +13,15 @@ napi_threadsafe_function callback = nullptr;
 quint64 generation = 0;
 QJsonObject options;
 
-QString ReadOption(napi_env env, napi_value value)
+QString ReadOption(napi_env env, napi_value value, size_t limit = 16)
 {
     size_t size = 0;
-    if (napi_get_value_string_utf8(env, value, nullptr, 0, &size) != napi_ok || size > 16)
+    if (napi_get_value_string_utf8(env, value, nullptr, 0, &size) != napi_ok || size > limit)
         return {};
-    char text[17]{};
-    napi_get_value_string_utf8(env, value, text, sizeof(text), &size);
-    return QString::fromUtf8(text, static_cast<int>(size));
+    QByteArray text(static_cast<int>(size + 1), '\0');
+    if (napi_get_value_string_utf8(env, value, text.data(), text.size(), &size) != napi_ok)
+        return {};
+    return QString::fromUtf8(text.constData(), static_cast<int>(size));
 }
 
 // 冷启动时 Qt 尚未运行，由 main 主动读取；重入时排队通知 Qt 线程重建窗体。
@@ -58,10 +59,10 @@ napi_value Clear(napi_env env, napi_callback_info)
 
 napi_value Register(napi_env env, napi_callback_info info)
 {
-    size_t count = 3;
-    napi_value arguments[3], name;
+    size_t count = 4;
+    napi_value arguments[4], name;
     napi_valuetype type;
-    if (napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr) != napi_ok || count != 3 ||
+    if (napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr) != napi_ok || count < 3 ||
         napi_typeof(env, arguments[0], &type) != napi_ok || type != napi_function)
     {
         napi_throw_type_error(env, nullptr, "需要工作区事件回调、业务模式和文档类型");
@@ -69,8 +70,11 @@ napi_value Register(napi_env env, napi_callback_info info)
     }
     const QString mode = ReadOption(env, arguments[1]);
     const QString kind = ReadOption(env, arguments[2]);
+    // 目录仅供截图使用；文档预览与转换的注册协议保持不变。
+    const QString cacheRoot = count >= 4 ? ReadOption(env, arguments[3], 4096) : QString();
     if (!((mode == "preview" && (kind == "pdf" || kind == "md" || kind == "word")) ||
-          (mode == "convert" && kind == "pdf") || (mode == "screenshot" && kind.isEmpty())))
+          (mode == "convert" && kind == "pdf") ||
+          (mode == "screenshot" && kind.isEmpty() && cacheRoot.startsWith('/'))))
     {
         napi_throw_type_error(env, nullptr, "Qt 会话仅支持文档预览、PDF 转 MD 和截图");
         return nullptr;
@@ -86,7 +90,7 @@ napi_value Register(napi_env env, napi_callback_info info)
     }
     napi_unref_threadsafe_function(env, callback);
     // 参数与回调同时发布，冷启动和再次进入都直接创建正确的一栏／两栏工作区。
-    options = QJsonObject{{"mode", mode}, {"kind", kind}};
+    options = QJsonObject{{"mode", mode}, {"kind", kind}, {"screenshotCacheRoot", cacheRoot}};
     ++generation;
     NotifyWorkspaceChanged();
     napi_value result;

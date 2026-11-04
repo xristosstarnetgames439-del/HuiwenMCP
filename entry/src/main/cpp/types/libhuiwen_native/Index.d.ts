@@ -54,7 +54,8 @@ interface HuiwenNative {
   harmonyCleanWorkspaces(root: string, mode: string, copiedRoot?: string): Promise<number>;
   // 将模式、文档类型与回调一起交给 Qt；截图使用 screenshot 模式和空 kind。
   // 回调仍在 ArkTS 线程处理系统操作。
-  registerWorkspace(callback: (event: string) => void, mode: string, kind: string): void;
+  // 截图会话额外传入已授权的缓存目录，文档会话保持三个参数。
+  registerWorkspace(callback: (event: string) => void, mode: string, kind: string, screenshotCacheRoot?: string): void;
   clearWorkspace(): void;
   workspaceReply(result: string): void;
 }

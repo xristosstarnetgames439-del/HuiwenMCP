@@ -5,6 +5,7 @@ import { window } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import nativeBridge from 'libhuiwen_native.so';
 import { AppSettings, readSettings, SETTINGS_CHANGED, ScreenshotShortcut } from '../settings/AppSettings';
+import { prepareScreenshotCache } from './ScreenshotHistory';
 
 export const BEFORE_SCREENSHOT: string = 'huiwen.screenshot.before';
 export const CANCEL_SHORTCUT_RECORDING: string = 'huiwen.shortcut.cancelRecording';
@@ -201,6 +202,7 @@ export async function startScreenshot(hideApplication: boolean = false): Promise
         throw new Error('未获得屏幕截图权限');
       }
     }
+    await prepareScreenshotCache(context);
     context.getApplicationContext().eventHub.emit(BEFORE_SCREENSHOT);
     if (hideApplication) {
       await minimizeBeforeCapture(windowStage.getMainWindowSync());

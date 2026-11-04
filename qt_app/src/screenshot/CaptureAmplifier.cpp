@@ -60,6 +60,12 @@ QString CaptureAmplifier::colorText() const
     return QStringLiteral("RGB(%1, %2, %3)").arg(color.red()).arg(color.green()).arg(color.blue());
 }
 
+QString CaptureAmplifier::colorHex() const
+{
+    return originImage_.isNull() ? QString()
+                                 : originImage_.pixelColor(sourcePixel_).name(QColor::HexRgb);
+}
+
 void CaptureAmplifier::toggleColorFormat()
 {
     hexFormat_ = !hexFormat_;

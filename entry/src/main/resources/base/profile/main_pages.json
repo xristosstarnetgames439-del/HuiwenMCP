@@ -2,6 +2,7 @@
   "src": [
     "pages/HomePage",
     "pages/Index",
-    "pages/ScreenToastPage"
+    "pages/ScreenToastPage",
+    "pages/ScreenshotPreviewPage"
   ]
 }

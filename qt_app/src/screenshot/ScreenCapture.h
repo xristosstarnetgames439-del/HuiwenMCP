@@ -8,13 +8,14 @@
 class ScreenCapture
 {
   public:
-    using FinishCallback = std::function<void(bool, const QString &, const QString &)>;
+    using FinishCallback = std::function<void(bool, const QString &, const QString &, bool)>;
 
     static ScreenCapture *getInstance();
 
-    // 启动框选截图。回调参数依次为：成功、图片本地路径、错误信息。
+    // 回调依次返回成功、路径、错误、是否为应用缓存图；用户另存文件只入库、不删除。
     // 必须在 Qt GUI 线程调用。
-    void startCapture(bool ignoreActiveWindow, FinishCallback callback);
+    void startCapture(bool ignoreActiveWindow, FinishCallback callback,
+                      const QString &cacheDirectory = {});
 
   private:
     ScreenCapture() = default;

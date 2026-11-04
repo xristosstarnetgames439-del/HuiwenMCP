@@ -17,6 +17,8 @@ class CaptureAmplifier : public QWidget
   public:
     explicit CaptureAmplifier(const QPixmap &originPainting, QWidget *parent = nullptr);
     QString colorText() const;
+    // 历史色块始终使用 HEX；复制文本仍保留用户当前选择的 HEX／RGB 格式。
+    QString colorHex() const;
     void toggleColorFormat();
 
   public slots:

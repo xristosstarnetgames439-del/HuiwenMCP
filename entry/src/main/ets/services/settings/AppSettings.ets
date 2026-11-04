@@ -16,21 +16,35 @@ export interface AppSettings {
   closeAction: string;
   hiddenShortcut: ScreenshotShortcut;
   screenShortcut: ScreenshotShortcut;
+  screenshotCacheRoot: string;
+  screenshotCacheUri: string;
+  screenshotDownloadRoot: string;
+  screenshotDownloadUri: string;
 }
 
 export const SETTINGS_CHANGED: string = 'huiwen.settings.changed';
+export const DEFAULT_SCREENSHOT_DOWNLOAD_DIR: string = '/storage/Users/currentUser/Images/gallery/HuiWenScreenShot';
 
 export function defaultSettings(): AppSettings {
   return {
     storageRoot: '', storageUri: '', recentLimit: 3, closeAction: 'home',
     hiddenShortcut: { modifier: KeyCode.KEYCODE_CTRL_LEFT, key: KeyCode.KEYCODE_1 },
-    screenShortcut: { modifier: KeyCode.KEYCODE_CTRL_LEFT, key: KeyCode.KEYCODE_2 }
+    screenShortcut: { modifier: KeyCode.KEYCODE_CTRL_LEFT, key: KeyCode.KEYCODE_2 },
+    screenshotCacheRoot: '', screenshotCacheUri: '', screenshotDownloadRoot: '', screenshotDownloadUri: ''
   };
 }
 
 export function readSettings(context: common.Context): AppSettings {
   const store = preferences.getPreferencesSync(context.getApplicationContext(), { name: 'app_settings' });
   const result = defaultSettings();
+  const cacheRoot = store.getSync('screenshotCacheRoot', '');
+  const cacheUri = store.getSync('screenshotCacheUri', '');
+  const downloadRoot = store.getSync('screenshotDownloadRoot', '');
+  const downloadUri = store.getSync('screenshotDownloadUri', '');
+  result.screenshotCacheRoot = typeof cacheRoot === 'string' ? cacheRoot : '';
+  result.screenshotCacheUri = typeof cacheUri === 'string' ? cacheUri : '';
+  result.screenshotDownloadRoot = typeof downloadRoot === 'string' ? downloadRoot : '';
+  result.screenshotDownloadUri = typeof downloadUri === 'string' ? downloadUri : '';
   const root = store.getSync('storageRoot', '');
   const uri = store.getSync('storageUri', '');
   const limit = store.getSync('recentLimit', 3);
@@ -66,6 +80,10 @@ function writeSettings(store: preferences.Preferences, settings: AppSettings): v
   store.putSync('screenKey', settings.screenShortcut.key);
   store.putSync('hiddenName', settings.hiddenShortcut.keyName || '');
   store.putSync('screenName', settings.screenShortcut.keyName || '');
+  store.putSync('screenshotCacheRoot', settings.screenshotCacheRoot);
+  store.putSync('screenshotCacheUri', settings.screenshotCacheUri);
+  store.putSync('screenshotDownloadRoot', settings.screenshotDownloadRoot);
+  store.putSync('screenshotDownloadUri', settings.screenshotDownloadUri);
 }
 
 export async function saveSettings(context: common.Context, settings: AppSettings): Promise<void> {
@@ -84,4 +102,12 @@ export async function saveSettings(context: common.Context, settings: AppSetting
 
 export function workspaceRoot(context: common.Context): string {
   return readSettings(context).storageRoot || context.getApplicationContext().filesDir;
+}
+
+export function screenshotCacheRoot(context: common.Context): string {
+  return readSettings(context).screenshotCacheRoot || `${context.getApplicationContext().filesDir}/screenshots`;
+}
+
+export function screenshotDownloadRoot(context: common.Context): string {
+  return readSettings(context).screenshotDownloadRoot || DEFAULT_SCREENSHOT_DOWNLOAD_DIR;
 }

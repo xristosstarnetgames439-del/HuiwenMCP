@@ -7,6 +7,8 @@ import qpa from 'libplugins_platforms_qopenharmony.so';
 import nativeBridge from 'libhuiwen_native.so';
 import { showScreenToast } from '../services/screenshot/ScreenToast';
 import { finishScreenshot } from '../services/screenshot/ScreenshotService';
+import { rememberColor, rememberScreenshot } from '../services/screenshot/ScreenshotHistory';
+import { screenshotCacheRoot } from '../services/settings/AppSettings';
 
 interface ScreenshotResult {
   action: string;
@@ -14,6 +16,10 @@ interface ScreenshotResult {
   displayId: number;
   path: string;
   error: string;
+  value: string;
+  color: string;
+  ok: boolean;
+  cached: boolean;
 }
 
 export default class QtScreenshotAbility extends UIAbility {
@@ -54,6 +60,10 @@ export default class QtScreenshotAbility extends UIAbility {
       nativeBridge.registerWorkspace((json: string) => {
         const result = JSON.parse(json) as ScreenshotResult;
         if (result.action === 'colorCopied') {
+          rememberColor(screenshotContext.getApplicationContext(), result.value, result.color)
+            .catch((error: Error) => {
+              hilog.error(0xFF00, 'HuiwenScreenshot', 'HUIWEN_COLOR_HISTORY_FAILED: %{public}s', error.message);
+            });
           // 独立浮窗使用有效的 Ability 上下文加载页面，不依赖首页。
           showScreenToast(screenshotContext, `${result.format} 色值已复制到剪贴板`, result.displayId)
             .catch((error: BusinessError) => {
@@ -72,8 +82,15 @@ export default class QtScreenshotAbility extends UIAbility {
           this.context.terminateSelf().catch((error: Error) => console.warn(error.message));
         } else {
           hilog.info(0xFF00, 'HuiwenScreenshot', 'HUIWEN_SCREENSHOT_FINISHED: %{public}s', result.path);
+          if (result.ok && result.path !== '') {
+            // 入库服务持有应用上下文，截图窗口销毁后仍能完成写盘；取消截图不会新增记录。
+            rememberScreenshot(screenshotContext.getApplicationContext(), result.path, result.cached)
+              .catch((error: Error) => {
+                hilog.error(0xFF00, 'HuiwenScreenshot', 'HUIWEN_SCREENSHOT_HISTORY_FAILED: %{public}s', error.message);
+              });
+          }
         }
-      }, 'screenshot', '');
+      }, 'screenshot', '', screenshotCacheRoot(screenshotContext));
     } catch (error) {
       this.failStart(error as Error);
     }

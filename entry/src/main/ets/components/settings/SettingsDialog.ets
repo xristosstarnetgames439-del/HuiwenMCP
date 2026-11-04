@@ -2,18 +2,23 @@
 import { common } from '@kit.AbilityKit';
 import { HomeDialog } from '../common/HomeDialog';
 import { ShortcutInput } from './ShortcutInput';
-import { defaultSettings, readSettings, saveSettings, ScreenshotShortcut, workspaceRoot } from '../../services/settings/AppSettings';
+import { defaultSettings, readSettings, saveSettings, ScreenshotShortcut, workspaceRoot,
+  screenshotCacheRoot, screenshotDownloadRoot } from '../../services/settings/AppSettings';
 import { chooseWorkspaceLocation, cleanWorkspaceCache, openWorkspaceLocation,
   restoreWorkspaceLocation } from '../../services/settings/WorkspaceStorage';
 import { applyScreenshotShortcuts, CANCEL_SHORTCUT_RECORDING,
   finishShortcutRecording } from '../../services/screenshot/ScreenshotService';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { changeScreenshotDirectory, openScreenshotDirectory } from '../../services/screenshot/ScreenshotHistory';
+import { closeScreenshotPreview } from '../../services/screenshot/ScreenshotPreview';
 
 @Component
 export struct SettingsDialog {
   @Prop dialogWidth: number = 660;
   @Prop contentHeight: number = 480;
   @State storagePath: string = '';
+  @State screenshotCachePath: string = '';
+  @State screenshotDownloadPath: string = '';
   @State recentLimit: number = 3;
   @State closeAction: string = 'home';
   @State hiddenShortcut: ScreenshotShortcut = defaultSettings().hiddenShortcut;
@@ -34,6 +39,8 @@ export struct SettingsDialog {
     const context = this.context();
     const settings = readSettings(context);
     this.storagePath = workspaceRoot(context);
+    this.screenshotCachePath = screenshotCacheRoot(context);
+    this.screenshotDownloadPath = screenshotDownloadRoot(context);
     this.recentLimit = settings.recentLimit;
     this.closeAction = settings.closeAction;
     this.hiddenShortcut = settings.hiddenShortcut;
@@ -143,6 +150,31 @@ export struct SettingsDialog {
     }
   }
 
+  private async changeScreenshotLocation(cache: boolean, restore: boolean): Promise<void> {
+    this.busy = true;
+    AppStorage.setOrCreate('storageBusy', true);
+    this.message = '';
+    try {
+      if (cache) { await closeScreenshotPreview(); }
+      await changeScreenshotDirectory(this.context(), cache, restore);
+    } catch (error) {
+      this.message = (error as Error).message;
+    } finally {
+      this.reload();
+      this.busy = false;
+      AppStorage.setOrCreate('storageBusy', false);
+    }
+  }
+
+  private async browseScreenshotLocation(cache: boolean): Promise<void> {
+    this.message = '';
+    try {
+      await openScreenshotDirectory(this.context(), cache);
+    } catch (error) {
+      this.message = `无法打开截图目录：${(error as Error).message}`;
+    }
+  }
+
   private confirmClean(mode: string): void {
     const all = mode === 'all';
     this.getUIContext().showAlertDialog({
@@ -228,6 +260,37 @@ export struct SettingsDialog {
     .alignItems(VerticalAlign.Center)
   }
 
+  @Builder
+  screenshotDirectory(title: string, path: string, cache: boolean) {
+    Column({ space: 8 }) {
+      Text(title).fontSize(14).fontColor($r('app.color.home_text'))
+      Row({ space: 10 }) {
+        Text(path)
+          .fontSize(13)
+          .fontFamily('monospace')
+          .fontColor($r('app.color.home_text'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .ellipsisMode(EllipsisMode.CENTER)
+          .copyOption(CopyOptions.InApp)
+          .height(38)
+          .layoutWeight(1)
+          .padding({ left: 12, right: 12 })
+          .backgroundColor($r('app.color.home_background'))
+          .border({ width: 1, color: $r('app.color.home_border') })
+          .borderRadius(8)
+        this.actionButton('浏览', () => this.browseScreenshotLocation(cache))
+      }
+      .width('100%')
+      Row({ space: 12 }) {
+        this.actionButton('修改位置', () => this.changeScreenshotLocation(cache, false))
+        this.actionButton('恢复默认路径', () => this.changeScreenshotLocation(cache, true))
+      }
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+  }
+
   build() {
     HomeDialog({ title: '应用设置', titleIcon: $r('app.media.menu_settings'), dialogWidth: this.dialogWidth,
       onCloseRequested: () => { if (!this.busy) { this.onCloseRequested(); } }
@@ -288,6 +351,8 @@ export struct SettingsDialog {
           .alignItems(HorizontalAlign.Start)
           Column({ space: 12 }) {
             this.sectionTitle('截图设置')
+            this.screenshotDirectory('截图下载目录', this.screenshotDownloadPath, false)
+            this.screenshotDirectory('截图缓存目录', this.screenshotCachePath, true)
             Row({ space: 12 }) {
               Text('隐藏本应用截图').fontSize(14).fontColor($r('app.color.home_text')).width(140)
               ShortcutInput({ controlId: 'hidden-screenshot-shortcut', shortcut: this.hiddenShortcut,

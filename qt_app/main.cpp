@@ -48,12 +48,16 @@ int main(int argc, char *argv[])
             {
                 // 截图与文档工作区共用 Qt 线程，不创建转换页或 CEF 浏览器。
                 ScreenCapture::getInstance()->startCapture(
-                    false, [id](bool ok, const QString &path, const QString &error) {
+                    false,
+                    [id](bool ok, const QString &path, const QString &error, bool cached) {
                         if (id == QtBridge::workspaceId())
-                            QtBridge::instance().request(
-                                "screenshotFinished",
-                                QJsonObject{{"path", path}, {"error", error}, {"ok", ok}});
-                    });
+                            QtBridge::instance().request("screenshotFinished",
+                                                         QJsonObject{{"path", path},
+                                                                     {"error", error},
+                                                                     {"ok", ok},
+                                                                     {"cached", cached}});
+                    },
+                    options.value("screenshotCacheRoot").toString());
                 return;
             }
             window = std::make_unique<ConversionWindow>(options.value("mode").toString(),

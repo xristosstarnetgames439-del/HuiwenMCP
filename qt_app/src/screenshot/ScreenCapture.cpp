@@ -380,9 +380,9 @@ class CaptureOverlay final : public QWidget
     };
 
     CaptureOverlay(ScreenSnapshots snapshots, QWidget *hiddenWindow,
-                   ScreenCapture::FinishCallback callback)
+                   ScreenCapture::FinishCallback callback, const QString &cacheDirectory)
         : snapshots_(std::move(snapshots)), hiddenWindow_(hiddenWindow),
-          callback_(std::move(callback))
+          callback_(std::move(callback)), cacheDirectory_(cacheDirectory)
     {
         setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
         setWindowTitle(QStringLiteral("截图"));
@@ -904,6 +904,8 @@ class CaptureOverlay final : public QWidget
                 const QString format = color.startsWith('#') ? "HEX" : "RGB";
                 QtBridge::instance().request(
                     "colorCopied", QJsonObject{{"format", format},
+                                               {"value", color},
+                                               {"color", amplifier_->colorHex()},
                                                { "displayId",
                                                  static_cast<double>(captureDisplayId_) }});
 #endif
@@ -1294,15 +1296,18 @@ class CaptureOverlay final : public QWidget
         // 截图完成后同步写入汇文 Qt 剪贴板。
         QApplication::clipboard()->setPixmap(captured, QClipboard::Clipboard);
 
-        QDir dir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
-                 QStringLiteral("/screenshots"));
+        // 鸿蒙传入已授权的缓存目录，图片与剪贴板 URI 共用同一文件，不再入库后删除原图。
+        QDir dir(cacheDirectory_.isEmpty()
+                     ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+                           QStringLiteral("/screenshots")
+                     : cacheDirectory_);
         if (!dir.exists() && !dir.mkpath(QStringLiteral(".")))
         {
             finish(false, QString(), QStringLiteral("无法创建截图缓存目录。"));
             return;
         }
-        const QString path = dir.filePath(
-            QStringLiteral("huiwen_capture_%1.png").arg(QDateTime::currentMSecsSinceEpoch()));
+        const QString path =
+            dir.filePath(QStringLiteral("capture_%1.png").arg(QDateTime::currentMSecsSinceEpoch()));
         if (!captured.save(path, "PNG"))
         {
             finish(false, QString(), QStringLiteral("截图保存失败。"));
@@ -1315,7 +1320,7 @@ class CaptureOverlay final : public QWidget
         // 同时附加 pixelmap 记录写入 pasteboard，确保 web 窗口可粘贴。
         writeScreenshotToSystemPasteboard(captured, path);
 #endif
-        finish(true, path, QString());
+        finish(true, path, QString(), true);
     }
 
     QRect sourceRect(const QRect &logical) const
@@ -1326,7 +1331,7 @@ class CaptureOverlay final : public QWidget
                      qRound(logical.width() * sx), qRound(logical.height() * sy));
     }
 
-    void finish(bool ok, const QString &path, const QString &error)
+    void finish(bool ok, const QString &path, const QString &error, bool cached = false)
     {
         if (finished_)
             return;
@@ -1349,7 +1354,7 @@ class CaptureOverlay final : public QWidget
         qInfo().noquote() << "HUIWEN_SCREENSHOT_FINISHED:" << ok << path << error;
         // 销毁 overlay 窗口，避免它继续作为 startAbility 使用的 Ability（详见构造函数注释）
         if (callback)
-            callback(ok, path, error);
+            callback(ok, path, error, cached);
         close();
     }
 
@@ -1386,6 +1391,7 @@ class CaptureOverlay final : public QWidget
     ScreenSnapshots snapshots_;
     QPointer<QWidget> hiddenWindow_;
     ScreenCapture::FinishCallback callback_;
+    QString cacheDirectory_;
     CaptureToolbar *toolbar_ = nullptr;
     QLineEdit *textEditor_ = nullptr;
     QList<Mark> marks_;
@@ -1420,7 +1426,8 @@ class CaptureOverlay final : public QWidget
     CaptureAmplifier *amplifier_ = nullptr;
 };
 
-void BeginCapture(bool ignoreActiveWindow, ScreenCapture::FinishCallback callback)
+void BeginCapture(bool ignoreActiveWindow, ScreenCapture::FinishCallback callback,
+                  const QString &cacheDirectory)
 {
 #ifdef Q_OS_OPENHARMONY
     // 首页已在启动 Ability 前抓屏；这里仅取走底图，禁止再截取全屏宿主。
@@ -1436,12 +1443,12 @@ void BeginCapture(bool ignoreActiveWindow, ScreenCapture::FinishCallback callbac
 #endif
     if (!QGuiApplication::primaryScreen())
     {
-        callback(false, QString(), QStringLiteral("未找到可截图的屏幕。"));
+        callback(false, QString(), QStringLiteral("未找到可截图的屏幕。"), false);
         return;
     }
     if (snapshots.empty())
     {
-        callback(false, QString(), QStringLiteral("未找到起窗前的截图底图，请重试。"));
+        callback(false, QString(), QStringLiteral("未找到起窗前的截图底图，请重试。"), false);
         return;
     }
 
@@ -1453,7 +1460,7 @@ void BeginCapture(bool ignoreActiveWindow, ScreenCapture::FinishCallback callbac
     auto *overlay = new CaptureOverlay(
         std::move(snapshots),
         activeWindow && !activeWindow->isVisible() ? activeWindow.data() : nullptr,
-        std::move(callback));
+        std::move(callback), cacheDirectory);
     overlay->showFullScreen();
     overlay->raise();
     overlay->activateWindow();
@@ -1479,8 +1486,9 @@ ScreenCapture *ScreenCapture::getInstance()
     return &instance;
 }
 
-void ScreenCapture::startCapture(bool ignoreActiveWindow, FinishCallback callback)
+void ScreenCapture::startCapture(bool ignoreActiveWindow, FinishCallback callback,
+                                 const QString &cacheDirectory)
 {
     // ArkTS 入口已取得截图权限；这里只执行 Qt GUI 线程上的截图业务。
-    BeginCapture(ignoreActiveWindow, std::move(callback));
+    BeginCapture(ignoreActiveWindow, std::move(callback), cacheDirectory);
 }
