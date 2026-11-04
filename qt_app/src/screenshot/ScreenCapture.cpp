@@ -230,9 +230,9 @@ class CaptureOverlay final : public QWidget
         RightBottom
     };
 
-    static constexpr int kSelectionBorderWidth = 3;
-    static constexpr int kHandleRadius = 5;
-    static constexpr int kResizePadding = 8; // 覆盖圆点外缘的热区和重绘余量
+    static constexpr int kSelectionBorderWidth = 5;
+    static constexpr qreal kHandleRadius = 17.0 / 2;
+    static constexpr int kResizePadding = 12; // 覆盖圆点外缘的热区和重绘余量
 
     // 根据鼠标位置判定命中的选区边框/角落方向
     ResizeDir getResizeDir(const QPoint &pos) const
@@ -560,12 +560,13 @@ class CaptureOverlay final : public QWidget
 
             // 边框与八个控制点统一蓝色，控制点绘制在标注上方。
             const QColor selectionColor(0x39, 0x83, 0xf7);
-            const QRectF frame(selected.adjusted(0, 0, -1, -1));
+            // 奇数线宽对齐半像素，边框与圆心共用同一个浮点矩形。
+            const QRectF frame = QRectF(selected).adjusted(0.5, 0.5, -0.5, -0.5);
             painter.setRenderHint(QPainter::Antialiasing);
             painter.setPen(QPen(selectionColor, kSelectionBorderWidth));
             painter.setBrush(Qt::NoBrush);
             painter.drawRect(frame);
-            painter.setPen(QPen(Qt::white, 1.5));
+            painter.setPen(QPen(Qt::white, 2.5));
             painter.setBrush(selectionColor);
             const QPointF handles[] = {frame.topLeft(),     {frame.center().x(), frame.top()},
                                        frame.topRight(),    {frame.right(), frame.center().y()},
