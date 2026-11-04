@@ -30,7 +30,7 @@ def failure_result(error: Exception) -> tuple[int, str]:
             return 1004, "转化失败：PDF 内容损坏或格式不受支持，请确认原文件可正常打开。"
         if isinstance(current, ValueError):
             if "PDF 未提取到文字" in str(current):
-                return 1005, "转化失败：未提取到文字，扫描件暂不支持，请选择含可复制文字的 PDF。"
+                return 1005, "转化失败：未提取到有效内容，请检查扫描清晰度或原文件内容。"
             return 1001, "转化失败：文件路径或格式不正确，请重新选择 PDF。"
         cause = current.__cause__ or current.__context__
         if cause is not None:

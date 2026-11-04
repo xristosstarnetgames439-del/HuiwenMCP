@@ -81,7 +81,8 @@ try {
   };
   const body = {
     innerHTML: '',
-    querySelectorAll: () => pageTops.map((_, i) => ({
+    addEventListener() {},
+    querySelectorAll: selector => selector !== '.pdf-page' ? [] : pageTops.map((_, i) => ({
       dataset: { pdfPage: String(i + 1) },
       getBoundingClientRect: () => ({ top: pageTops[i] - browser.scrollY, height: 450 })
     }))

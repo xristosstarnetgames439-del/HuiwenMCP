@@ -1,21 +1,24 @@
 // 编辑能力保持独立；只读预览在内存中渲染 MD 原文，不另存每篇文档的 HTML。
 import './library.css';
-import MarkdownIt from 'markdown-it';
+import { createMarkdownRenderer, renderDiagrams } from './source/rich-markdown.ts';
 
 export { EditorState } from '@codemirror/state';
 export { EditorView } from '@codemirror/view';
 export { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 export { parser, GFM } from '@lezer/markdown';
 
-const renderer = new MarkdownIt({ html: false, linkify: false, typographer: false });
+const renderer = createMarkdownRenderer();
+const imageEnvironment = () => ({
+  imageUrl: path => `https://huiwen-md.invalid/image?path=${encodeURIComponent(path)}`
+});
 
 export function renderMarkdown(source) {
-  return renderer.render(source);
+  return renderer.render(source, imageEnvironment());
 }
 
 // 只识别顶层独立段落中的页码，代码块、列表和普通正文中的同样文字不作锚点。
 export function renderPreview(source) {
-  const environment = {};
+  const environment = imageEnvironment();
   const tokens = renderer.parse(source, environment);
   const markers = [];
   for (let i = 0; i < tokens.length - 2; i++) {
@@ -28,11 +31,15 @@ export function renderPreview(source) {
     return renderMarkdown(source);
   }
   const render = (start, end) => renderer.renderer.render(tokens.slice(start, end), renderer.options, environment);
-  return render(0, markers[0].index) + markers.map((marker, i) =>
-    `<section class="pdf-page" data-pdf-page="${marker.page}">` +
-    render(marker.index + 3, markers[i + 1]?.index ?? tokens.length) +
-    `<div class="pdf-page-number">--第${marker.page}页--</div></section>`
-  ).join('');
+  return render(0, markers[0].index) + markers.map((marker, i) => {
+    const pageTokens = tokens.slice(marker.index + 3, markers[i + 1]?.index ?? tokens.length);
+    const logos = pageTokens.filter(token => token.type === 'fence' && token.level === 0 &&
+      token.info.trim() === 'pdf-logo');
+    const body = pageTokens.filter(token => !logos.includes(token));
+    const renderTokens = list => renderer.renderer.render(list, renderer.options, environment);
+    return `<section class="pdf-page" data-pdf-page="${marker.page}">` + renderTokens(body) +
+      `<div class="pdf-page-number">--第${marker.page}页--</div>` + renderTokens(logos) + '</section>';
+  }).join('');
 }
 
 let pages = [];
@@ -109,10 +116,34 @@ function restorePosition() {
   }
 }
 
+function showBrokenImage(image) {
+  if (!(image instanceof HTMLImageElement) || !image.isConnected) return;
+  const placeholder = document.createElement('span');
+  placeholder.className = 'md-image-error';
+  placeholder.setAttribute('role', 'img');
+  const raw = image.getAttribute('data-image-path') || '';
+  let filename = raw;
+  try { filename = decodeURIComponent(raw); } catch { /* retain malformed path for diagnosis */ }
+  filename = filename.startsWith('data:') ? '内嵌图片' : filename.split('/').pop();
+  const label = `${image.alt || '图片'}加载失败：${filename || '路径无效'}`;
+  placeholder.setAttribute('aria-label', label);
+  placeholder.title = label;
+  placeholder.innerHTML = '<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">' +
+    '<path d="M12 3H3v22h9m4-22h9v22h-9M15 2l-4 8 6 5-5 12M4 20l5-5 3 3m5 1 4-5 3 5" ' +
+    'fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+  placeholder.append(document.createTextNode(label));
+  image.replaceWith(placeholder);
+}
+
 export function showPreview(source) {
   const body = document.getElementById('markdown-body');
   observer?.disconnect();
+  // Error does not bubble, so use capture and install before assigning image src attributes.
+  if (!listening) body.addEventListener('error', event => showBrokenImage(event.target), true);
   body.innerHTML = renderPreview(source);
+  for (const image of body.querySelectorAll('img[data-image-path]')) {
+    if (!image.getAttribute('src')) showBrokenImage(image);
+  }
   pages = [...body.querySelectorAll('.pdf-page')];
   pageIndexes = new Map(pages.map((page, i) => [Number(page.dataset.pdfPage), i]));
   window.scrollTo(0, 0);
@@ -122,6 +153,24 @@ export function showPreview(source) {
   if (!listening) {
     window.addEventListener('scroll', queuePosition, { passive: true });
     window.addEventListener('resize', restorePosition);
+    body.addEventListener('click', async event => {
+      const button = event.target.closest?.('.md-copy-code');
+      if (!button) return;
+      const text = button.closest('.md-code-block')?.querySelector('code')?.textContent;
+      if (text === undefined) return;
+      try {
+        if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+        else {
+          const field = document.createElement('textarea');
+          field.value = text;
+          field.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+          document.body.append(field);
+          try { field.select(); if (!document.execCommand('copy')) throw new Error('copy'); }
+          finally { field.remove(); }
+        }
+        button.textContent = '已复制';
+      } catch { button.textContent = '请选中代码复制'; }
+    });
     listening = true;
   }
   if (typeof ResizeObserver !== 'undefined') {
@@ -130,4 +179,6 @@ export function showPreview(source) {
   }
   // 首次通知也作为正文已渲染的握手，原生端随后才开启同步。
   queuePosition();
+  // Diagram/font/image reflow goes through the existing ResizeObserver and page anchors.
+  void renderDiagrams(body);
 }

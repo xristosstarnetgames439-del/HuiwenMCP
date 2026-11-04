@@ -29,3 +29,30 @@ body { margin: 0; font: 16px/1.75 system-ui, "Noto Sans CJK SC", sans-serif; }
 .markdown-body img { max-width: 100%; height: auto; }
 .markdown-body a { color: #315fac; }
 .markdown-body hr { margin: 1.5em 0; border: 0; border-top: 1px solid #d4deec; }
+
+/* Rich Markdown: all fonts and diagram code are bundled, with no network requests. */
+.md-code-block { margin: 1em 0; border: 1px solid #d4deec; border-radius: 8px; overflow: hidden; }
+.md-code-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: #dfe6f0; font-size: 12px; }
+.md-copy-code { border: 0; border-radius: 4px; padding: 4px 8px; background: #f5f7fb; color: inherit; cursor: pointer; }
+.md-code-block pre { margin: 0; border-radius: 0; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal { color: #8c379e; }
+.hljs-string, .hljs-regexp, .hljs-attribute { color: #16744c; }
+.hljs-number, .hljs-built_in, .hljs-type { color: #96541a; }
+.hljs-title, .hljs-name, .hljs-section { color: #245ca6; }
+.hljs-comment, .hljs-meta { color: #64748b; }
+.md-diagram { margin: 1em 0; overflow: auto; text-align: center; }
+.mermaid-rendered svg { max-width: 100%; height: auto; }
+.diagram-error { border-left: 3px solid #c05f38; text-align: left; }
+.math.block, .katex-display { overflow-x: auto; overflow-y: hidden; padding: .3em 0; }
+.pdf-watermark { margin: 0 0 16px; padding: 8px 12px; border: 1px dashed #b7c8e1; border-radius: 6px; color: #64748b; white-space: pre-wrap; font-size: 13px; }
+.pdf-watermark-label { margin-right: 8px; font-size: 11px; color: #8793a5; }
+.pdf-logo { margin: 12px auto 20px; text-align: center; }
+.pdf-logo img { max-width: min(240px, 80%); max-height: 90px; object-fit: contain; }
+.footnotes { font-size: 14px; color: #53657e; }
+.task-list-item { list-style-type: none; }
+.task-list-item-checkbox { margin-right: .5em; }
+.markdown-body dd { margin-left: 1.5em; }
+.markdown-body mark { background: #fff1a6; color: inherit; }
+
+.md-image-error { display: flex; align-items: center; gap: 10px; min-height: 72px; margin: 12px 0; padding: 12px 16px; box-sizing: border-box; border: 1px dashed #a7afbc; border-radius: 6px; color: #727e90; background: #edf0f5; font-size: 13px; overflow-wrap: anywhere; }
+.md-image-error svg { flex: 0 0 28px; }

@@ -30,6 +30,16 @@ if [[ ! -d "$runtime_dir/lib/python3.14/site-packages" ]]; then
   exit 2
 fi
 
+# OCR stays inside the existing Python HNP; no new ArkTS/native bridge or HNP manifest.
+"${HOST_PYTHON:-python3}" "$project_dir/packaging/ohos/build_pdf_ocr.py" "$runtime_dir"
+ocr_runtime="$project_dir/.native-tools/pdf-ocr/runtime"
+pdfium_library="$project_dir/entry/libs/arm64-v8a/libpdfium.so"
+pdfium_notices="$project_dir/entry/src/main/resources/rawfile/third_party_licenses/pdfium"
+if [[ ! -s "$pdfium_library" ]]; then
+  echo "OCR 缺少项目当前的鸿蒙 libpdfium.so，请先完成现有 PDFium 准备任务" >&2
+  exit 2
+fi
+
 # 环境指纹不包含转换 API、MarkItDown、转换入口及业务补丁。
 hnp_file="$project_dir/hnp/arm64-v8a/huiwen_python.hnp"
 package_stamp="$project_dir/.hnp-cache/hnp-build.sha256"
@@ -37,7 +47,8 @@ package_key=$("${HOST_PYTHON:-python3}" - \
   "$runtime_dir" \
   "$project_dir/packaging/ohos/requirements-pdf.txt" \
   "$project_dir/packaging/ohos/python_smoke.py" "$project_dir/packaging/ohos/hnp.json" \
-  "$project_dir/packaging/ohos/pack_python_hnp.sh" "$hnpcli" <<'PY'
+  "$project_dir/packaging/ohos/pack_python_hnp.sh" "$hnpcli" \
+  "$ocr_runtime" "$pdfium_library" "$pdfium_notices" <<'PY'
 import hashlib
 import os
 from pathlib import Path
@@ -80,6 +91,9 @@ pack_output=$(mktemp -d "$project_dir/hnp/arm64-v8a/.pack.XXXXXX")
 dependency_stage=""
 trap 'rm -rf "$stage" "$pack_output"; if [[ -n "$dependency_stage" ]]; then rm -rf "$dependency_stage"; fi' EXIT
 cp -pR "$runtime_dir/." "$stage/"
+cp -pR "$ocr_runtime/." "$stage/"
+cp "$pdfium_library" "$stage/lib/libpdfium.so"
+cp -R "$pdfium_notices" "$stage/share/huiwen-ocr/pdfium-licenses"
 mkdir -p "$stage/share/huiwen" "$project_dir/hnp/arm64-v8a"
 site_packages="$stage/lib/python3.14/site-packages"
 
@@ -106,6 +120,9 @@ else
 fi
 cp -R "$dependency_cache/." "$site_packages/"
 rm -f "$site_packages/.complete"
+# Replace Linux Pillow (including incompatible optional extensions) with OHOS core.
+rm -rf "$site_packages/PIL" "$site_packages/pillow.libs"
+cp -R "$ocr_runtime/lib/python3.14/site-packages/PIL" "$site_packages/PIL"
 # 环境包不保留旧转换代码，业务必须来自当前 HAP 的 pyz。
 rm -rf "$site_packages/markitdown" "$site_packages/huiwen_converter"
 rm -f "$stage/share/huiwen/convert_pdf.py"

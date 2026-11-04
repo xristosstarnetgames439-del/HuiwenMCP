@@ -74,6 +74,7 @@ async function main() {
     format: 'iife',
     globalName: 'HuiwenMarkdown',
     target: ['chrome114'],
+    loader: { '.woff2': 'dataurl', '.woff': 'dataurl', '.ttf': 'dataurl' },
     minify: true,
     legalComments: 'inline',
     metafile: true,

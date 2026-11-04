@@ -2,6 +2,7 @@
 #include "CefDocumentPreviewWidget.h"
 #include <QApplication>
 #include <QDebug>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -15,6 +16,8 @@
 #include <QShowEvent>
 #include <QTextCodec>
 #include <QTimer>
+#include <QUrl>
+#include <QUrlQuery>
 #include <QVBoxLayout>
 #include <cmath>
 
@@ -22,10 +25,15 @@
 #include "include/cef_app.h"
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
+#include "include/cef_display_handler.h"
 #include "include/cef_load_handler.h"
 #include "include/cef_menu_model.h"
 #include "include/cef_process_message.h"
 #include "include/cef_request_handler.h"
+#include "include/cef_resource_request_handler.h"
+#include "include/cef_stream.h"
+#include "include/wrapper/cef_byte_read_handler.h"
+#include "include/wrapper/cef_stream_resource_handler.h"
 #include "include/cef_task.h"
 #include "ohos/adapter_c/adapter_c.h"
 #include <algorithm>
@@ -182,22 +190,97 @@ void CefRuntime::start()
 class PreviewClient final : public CefClient,
                             public CefLifeSpanHandler,
                             public CefLoadHandler,
+                            public CefDisplayHandler,
                             public CefRequestHandler,
+                            public CefResourceRequestHandler,
                             public CefContextMenuHandler
 {
   public:
     using Notice = std::function<void(bool, const QString &)>;
     using ScrollNotice = std::function<void(int, double, double)>;
-    PreviewClient(QString url, QString text, bool scrollBarVisible, Notice notice,
-                  ScrollNotice scrollNotice)
-        : url_(std::move(url)), text_(std::move(text)), notice_(std::move(notice)),
+    PreviewClient(QString url, QByteArray html, QString text, QString imageRoot,
+                  bool scrollBarVisible, Notice notice, ScrollNotice scrollNotice)
+        : url_(std::move(url)), html_(std::move(html)), text_(std::move(text)),
+          imageRoot_(std::move(imageRoot)), notice_(std::move(notice)),
           scrollNotice_(std::move(scrollNotice)), scrollBarVisible_(scrollBarVisible)
     {
     }
     CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
     CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
+    CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
     CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
     CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override { return this; }
+    CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(
+        CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest> request, bool, bool,
+        const CefString &, bool &disableDefaultHandling) override
+    {
+        const QUrl url(QString::fromStdString(request->GetURL().ToString()));
+        if (url.scheme() != QStringLiteral("https") ||
+            url.host() != QStringLiteral("huiwen-md.invalid"))
+            return nullptr;
+        // A browser-local resource address, never a network request (including
+        // failures).
+        disableDefaultHandling = true;
+        return this;
+    }
+    CefRefPtr<CefResourceHandler> GetResourceHandler(CefRefPtr<CefBrowser>,
+                                                     CefRefPtr<CefFrame> frame,
+                                                     CefRefPtr<CefRequest> request) override
+    {
+        const auto missing = []() -> CefRefPtr<CefResourceHandler> {
+            return new CefStreamResourceHandler(404, "Not Found", "text/plain", {}, nullptr);
+        };
+        if (!frame || !frame->IsMain() || request->GetMethod() != "GET")
+            return missing();
+        if (!html_.isEmpty() && request->GetResourceType() == RT_MAIN_FRAME &&
+            request->GetURL().ToString() == url_.toStdString())
+        {
+            // Hold the client while CEF reads its immutable page bytes asynchronously.
+            auto stream = CefStreamReader::CreateForHandler(new CefByteReadHandler(
+                reinterpret_cast<const unsigned char *>(html_.constData()), html_.size(), this));
+            OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "HuiwenCEF",
+                         "PREVIEW local page bytes=%{public}d", html_.size());
+            return new CefStreamResourceHandler(
+                200, "OK", "text/html",
+                {{"Cache-Control", "no-store"}, {"X-Content-Type-Options", "nosniff"}}, stream);
+        }
+        if (imageRoot_.isEmpty() || request->GetResourceType() != RT_IMAGE)
+            return missing();
+        const QUrl url(QString::fromStdString(request->GetURL().ToString()));
+        if (url.path() != QStringLiteral("/image") || url.hasFragment())
+            return missing();
+        const QString relative =
+            QUrlQuery(url).queryItemValue(QStringLiteral("path"), QUrl::FullyDecoded);
+        if (relative.isEmpty() || relative.size() > 4096 || !QDir::isRelativePath(relative) ||
+            relative.contains(QChar(0)) || relative.contains(QLatin1Char('\\')) ||
+            relative.contains(QLatin1Char(':')))
+            return missing();
+        const QFileInfo file(QDir(imageRoot_).filePath(relative));
+        const QString canonical = file.canonicalFilePath();
+        if (!canonical.startsWith(imageRoot_ + QLatin1Char('/')) || !file.isFile() ||
+            file.size() <= 0 || file.size() > 32 * 1024 * 1024)
+            return missing();
+        const QString extension = QFileInfo(canonical).suffix().toLower();
+        QString mime;
+        if (extension == QStringLiteral("png"))
+            mime = QStringLiteral("image/png");
+        else if (extension == QStringLiteral("jpg") || extension == QStringLiteral("jpeg"))
+            mime = QStringLiteral("image/jpeg");
+        else if (extension == QStringLiteral("webp"))
+            mime = QStringLiteral("image/webp");
+        else if (extension == QStringLiteral("gif"))
+            mime = QStringLiteral("image/gif");
+        else if (extension == QStringLiteral("bmp"))
+            mime = QStringLiteral("image/bmp");
+        else
+            return missing();
+        auto stream = CefStreamReader::CreateForFile(canonical.toStdString());
+        if (!stream)
+            return missing();
+        return new CefStreamResourceHandler(
+            200, "OK", mime.toStdString(),
+            {{"Cache-Control", "no-store"}, {"X-Content-Type-Options", "nosniff"}}, stream);
+    }
     void OnBeforeContextMenu(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>,
                              CefRefPtr<CefContextMenuParams>,
                              CefRefPtr<CefMenuModel> model) override
@@ -312,6 +395,9 @@ class PreviewClient final : public CefClient,
             if (error.size() > 4096)
                 return true;
             const bool ready = values->GetBool(0);
+            OH_LOG_Print(LOG_APP, ready ? LOG_INFO : LOG_ERROR, 0xFF00, "HuiwenCEF",
+                         "PREVIEW state ready=%{public}d error=%{public}s", ready,
+                         error.substr(0, 512).c_str());
             loaded_ = ready;
             if (ready)
                 setScrollBarVisible(scrollBarVisible_);
@@ -354,13 +440,21 @@ class PreviewClient final : public CefClient,
     }
     void OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int) override
     {
-        if (!frame->IsMain() || closing_ || frame->GetURL().ToString() != url_.toStdString())
+        if (!frame->IsMain() || closing_)
             return;
+        if (frame->GetURL().ToString() != url_.toStdString())
+        {
+            OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "HuiwenCEF",
+                         "PREVIEW unexpected main frame URL length=%{public}zu expected=%{public}d",
+                         frame->GetURL().ToString().size(), url_.size());
+            return;
+        }
         OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "HuiwenCEF", "PREVIEW main frame loaded");
         const QByteArray argument = QJsonDocument(QJsonArray{text_}).toJson(QJsonDocument::Compact);
         const QString script =
             QStringLiteral("try { window.HuiwenPreview.showPreview(%1[0]); } "
-                           "catch (error) { window.huiwenReportPreview(false, "
+                           "catch (error) { console.error('PREVIEW render failed', error); "
+                           "window.huiwenReportPreview(false, "
                            "'预览失败：' + String(error.message || error).slice(0, 512)); }")
                 .arg(QString::fromUtf8(argument));
         frameLoaded_ = true;
@@ -374,10 +468,20 @@ class PreviewClient final : public CefClient,
             frameLoaded_ = false;
             loaded_ = false;
             OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "HuiwenCEF",
-                         "PREVIEW load failed code=%{public}d", static_cast<int>(code));
+                         "PREVIEW load failed code=%{public}d message=%{public}s",
+                         static_cast<int>(code), message.ToString().substr(0, 512).c_str());
             notice_(false, QStringLiteral("文档预览加载失败：") +
                                QString::fromStdString(message.ToString()));
         }
+    }
+    bool OnConsoleMessage(CefRefPtr<CefBrowser>, cef_log_severity_t level,
+                          const CefString &message, const CefString &, int line) override
+    {
+        if (!closing_ && level >= LOGSEVERITY_WARNING && level < LOGSEVERITY_DISABLE)
+            OH_LOG_Print(LOG_APP, level >= LOGSEVERITY_ERROR ? LOG_ERROR : LOG_WARN,
+                         0xFF00, "HuiwenCEF", "PREVIEW JS line=%{public}d message=%{public}s",
+                         line, message.ToString().substr(0, 1024).c_str());
+        return false;
     }
     void OnRenderProcessTerminated(CefRefPtr<CefBrowser>, TerminationStatus status) override
     {
@@ -439,7 +543,9 @@ class PreviewClient final : public CefClient,
     QRect appliedBounds_;
     bool nodeVisible_ = false;
     QString url_;
+    const QByteArray html_;
     QString text_;
+    const QString imageRoot_;
     Notice notice_;
     ScrollNotice scrollNotice_;
     CefRefPtr<CefBrowser> browser_;
@@ -462,6 +568,7 @@ class CefDocumentPreviewWidget::Private
     QString label;
     QString text;
     QString url;
+    QByteArray html;
     QString path;
     bool valid = false;
     bool ready = false;
@@ -546,8 +653,16 @@ void CefDocumentPreviewWidget::setDocument(const QString &path)
         d_->status->setText(QStringLiteral("缺少预览资源，请重新执行 Run 构建"));
         return;
     }
-    d_->url =
-        QStringLiteral("data:text/html;base64,") + QString::fromLatin1(page.readAll().toBase64());
+    d_->html.clear();
+    if (d_->format == Format::Markdown)
+    {
+        // Rich preview assets exceed Chromium's URL limit; serve bytes through CEF instead.
+        d_->html = page.readAll();
+        d_->url = QStringLiteral("https://huiwen-md.invalid/preview.html");
+    }
+    else
+        d_->url = QStringLiteral("data:text/html;base64,") +
+                  QString::fromLatin1(page.readAll().toBase64());
     d_->valid = true;
     d_->status->setText(QStringLiteral("正在加载 %1 预览…").arg(d_->label));
     if (isVisible())
@@ -593,7 +708,9 @@ void CefDocumentPreviewWidget::openBrowser()
     const int generation = d_->generation;
     QPointer<CefDocumentPreviewWidget> self(this);
     d_->client = new PreviewClient(
-        d_->url, d_->text, d_->scrollBarVisible,
+        d_->url, d_->html, d_->text,
+        d_->format == Format::Markdown ? QFileInfo(d_->path).canonicalPath() : QString(),
+        d_->scrollBarVisible,
         [self, generation](bool ready, const QString &error)
         {
             QMetaObject::invokeMethod(

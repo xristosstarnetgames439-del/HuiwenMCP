@@ -84,7 +84,9 @@ class PreviewRenderApp final : public CefApp, public CefRenderProcessHandler
     void OnContextCreated(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
                           CefRefPtr<CefV8Context> context) override
     {
-        if (frame->IsMain() && frame->GetURL().ToString().rfind("data:text/html;base64,", 0) == 0)
+        const auto url = frame->GetURL().ToString();
+        if (frame->IsMain() && (url == "https://huiwen-md.invalid/preview.html" ||
+                               url.rfind("data:text/html;base64,", 0) == 0))
         {
             context->GetGlobal()->SetValue(
                 "huiwenReportScroll", CefV8Value::CreateFunction("huiwenReportScroll", new ScrollReporter),
