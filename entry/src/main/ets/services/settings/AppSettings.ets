@@ -29,7 +29,7 @@ export function defaultSettings(): AppSettings {
 }
 
 export function readSettings(context: common.Context): AppSettings {
-  const store = preferences.getPreferencesSync(context, { name: 'app_settings' });
+  const store = preferences.getPreferencesSync(context.getApplicationContext(), { name: 'app_settings' });
   const result = defaultSettings();
   const root = store.getSync('storageRoot', '');
   const uri = store.getSync('storageUri', '');
@@ -70,7 +70,7 @@ function writeSettings(store: preferences.Preferences, settings: AppSettings): v
 
 export async function saveSettings(context: common.Context, settings: AppSettings): Promise<void> {
   const previous = readSettings(context);
-  const store = preferences.getPreferencesSync(context, { name: 'app_settings' });
+  const store = preferences.getPreferencesSync(context.getApplicationContext(), { name: 'app_settings' });
   writeSettings(store, settings);
   try {
     await store.flush();

@@ -7,6 +7,7 @@ import nativeBridge from 'libhuiwen_native.so';
 import { AppSettings, readSettings, SETTINGS_CHANGED, ScreenshotShortcut } from '../settings/AppSettings';
 
 export const BEFORE_SCREENSHOT: string = 'huiwen.screenshot.before';
+export const CANCEL_SHORTCUT_RECORDING: string = 'huiwen.shortcut.cancelRecording';
 
 interface ShortcutBinding {
   options: inputConsumer.HotkeyOptions;
@@ -41,7 +42,7 @@ export function shortcutKeys(shortcut: ScreenshotShortcut): string[] {
 function binding(shortcut: ScreenshotShortcut, hideApplication: boolean): ShortcutBinding {
   return {
     options: { preKeys: [shortcut.modifier], finalKey: shortcut.key, isRepeat: false },
-    callback: (): void => {
+    callback: (options: inputConsumer.HotkeyOptions): void => {
       if (AppStorage.get<boolean>('shortcutRecording') || AppStorage.get<boolean>('storageBusy')) {
         return;
       }
@@ -50,6 +51,8 @@ function binding(shortcut: ScreenshotShortcut, hideApplication: boolean): Shortc
         hilog.warn(0xFF00, 'HuiwenScreenshot', 'HUIWEN_HOTKEY_UNAVAILABLE: 文档工作区打开期间暂不启动截图');
         return;
       }
+      hilog.info(0xFF00, 'HuiwenScreenshot', 'HUIWEN_SHORTCUT_TRIGGERED: modifier=%{public}d key=%{public}d',
+        options.preKeys[0], options.finalKey);
       startScreenshot(hideApplication).catch((error: Error) => reportFailure(error));
     }
   };
@@ -77,6 +80,8 @@ export function applyScreenshotShortcuts(settings: AppSettings): void {
       added.push(item);
     });
     bindings = next;
+    hilog.info(0xFF00, 'HuiwenScreenshot', 'HUIWEN_SHORTCUT_APPLIED: hidden=%{public}d screen=%{public}d',
+      settings.hiddenShortcut.key, settings.screenShortcut.key);
   } catch (error) {
     added.forEach((item: ShortcutBinding) => inputConsumer.off('hotkeyChange', item.options, item.callback));
     previous.forEach((item: ShortcutBinding) => inputConsumer.on('hotkeyChange', item.options, item.callback));
@@ -93,6 +98,11 @@ export function setShortcutRecording(active: boolean): void {
   } else if (host) {
     applyScreenshotShortcuts(readSettings(host));
   }
+}
+
+// 提交时调用方已注册新组合或回滚旧组合，只解除屏蔽，不能再次读配置覆盖订阅。
+export function finishShortcutRecording(): void {
+  AppStorage.setOrCreate('shortcutRecording', false);
 }
 
 function reportFailure(error: Error): void {

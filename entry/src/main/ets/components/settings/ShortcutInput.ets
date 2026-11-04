@@ -1,7 +1,9 @@
 // 独立键帽录入：分别修改修饰键和普通键，提交后由系统检查组合占用。
 import { KeyCode } from '@kit.InputKit';
+import { common } from '@kit.AbilityKit';
 import { ScreenshotShortcut } from '../../services/settings/AppSettings';
-import { setShortcutRecording, shortcutKeys } from '../../services/screenshot/ScreenshotService';
+import { CANCEL_SHORTCUT_RECORDING, setShortcutRecording,
+  shortcutKeys } from '../../services/screenshot/ScreenshotService';
 
 @Component
 export struct ShortcutInput {
@@ -11,8 +13,16 @@ export struct ShortcutInput {
   @State recordingKey: number = 0;
   @State error: string = '';
   onChange: (shortcut: ScreenshotShortcut) => void = () => {};
+  private cancelRecording = (): void => this.stopRecording();
+
+  aboutToAppear(): void {
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    context.getApplicationContext().eventHub.on(CANCEL_SHORTCUT_RECORDING, this.cancelRecording);
+  }
 
   aboutToDisappear(): void {
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    context.getApplicationContext().eventHub.off(CANCEL_SHORTCUT_RECORDING, this.cancelRecording);
     this.stopRecording();
   }
 
@@ -55,13 +65,15 @@ export struct ShortcutInput {
       key: this.recordingKey === 2 ? key : this.shortcut.key,
       keyName: this.recordingKey === 2 ? event.keyText : this.shortcut.keyName
     };
-    this.stopRecording();
+    // 成功录入只退出控件编辑态；新组合保存完成前不恢复旧订阅。
+    this.recordingKey = 0;
     this.error = '';
     this.onChange(shortcut);
   }
 
   private beginRecording(position: number): void {
-    this.stopRecording();
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    context.getApplicationContext().eventHub.emit(CANCEL_SHORTCUT_RECORDING);
     this.error = '';
     this.recordingKey = position;
     try {

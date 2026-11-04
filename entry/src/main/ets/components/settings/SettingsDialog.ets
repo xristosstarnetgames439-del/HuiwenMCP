@@ -5,7 +5,8 @@ import { ShortcutInput } from './ShortcutInput';
 import { defaultSettings, readSettings, saveSettings, ScreenshotShortcut, workspaceRoot } from '../../services/settings/AppSettings';
 import { chooseWorkspaceLocation, cleanWorkspaceCache, openWorkspaceLocation,
   restoreWorkspaceLocation } from '../../services/settings/WorkspaceStorage';
-import { applyScreenshotShortcuts } from '../../services/screenshot/ScreenshotService';
+import { applyScreenshotShortcuts, CANCEL_SHORTCUT_RECORDING,
+  finishShortcutRecording } from '../../services/screenshot/ScreenshotService';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 @Component
@@ -72,6 +73,8 @@ export struct SettingsDialog {
       applyScreenshotShortcuts(settings);
       await saveSettings(this.context(), settings);
       this.reload();
+      hilog.info(0xFF00, 'HuiwenSettings', 'HUIWEN_SHORTCUT_SAVED: action=%{public}s modifier=%{public}d key=%{public}d',
+        hidden ? 'hidden' : 'screen', shortcut.modifier, shortcut.key);
     } catch (error) {
       try {
         applyScreenshotShortcuts(previous);
@@ -80,7 +83,11 @@ export struct SettingsDialog {
           (failure as Error).message);
       }
       this.message = (error as Error).message;
+      hilog.error(0xFF00, 'HuiwenSettings', 'HUIWEN_SHORTCUT_SAVE_FAILED: %{public}s', this.message);
+      this.getUIContext().getPromptAction().showToast({ message: this.message });
     } finally {
+      // 新组合或失败回滚已完成，只解除录入屏蔽，不重新订阅旧配置。
+      finishShortcutRecording();
       this.busy = false;
     }
   }
@@ -313,6 +320,17 @@ export struct SettingsDialog {
       .height(this.contentHeight)
       .scrollBar(BarState.Auto)
       .align(Alignment.TopStart)
+      // 按下时取消旧录入；键帽随后在点击时开始新录入，无需阻断点击冒泡。
+      .onTouch((event: TouchEvent) => {
+        if (event.type === TouchType.Down) {
+          this.context().getApplicationContext().eventHub.emit(CANCEL_SHORTCUT_RECORDING);
+        }
+      })
+      .onMouse((event: MouseEvent) => {
+        if (event.action === MouseAction.Press) {
+          this.context().getApplicationContext().eventHub.emit(CANCEL_SHORTCUT_RECORDING);
+        }
+      })
     }
   }
 }

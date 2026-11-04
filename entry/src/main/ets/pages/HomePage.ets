@@ -15,7 +15,8 @@ import { HomeAboutDialog } from '../components/home/HomeAboutDialog';
 import { FileManagerDialog } from '../components/fileManager/FileManagerDialog';
 import { SettingsDialog } from '../components/settings/SettingsDialog';
 import { readSettings, SETTINGS_CHANGED } from '../services/settings/AppSettings';
-import { BEFORE_SCREENSHOT, isScreenshotRunning, startScreenshot } from '../services/screenshot/ScreenshotService';
+import { BEFORE_SCREENSHOT, CANCEL_SHORTCUT_RECORDING, isScreenshotRunning,
+  startScreenshot } from '../services/screenshot/ScreenshotService';
 import { FileManagerFile } from '../models/FileManagerFile';
 import { openFileDirectory } from '../services/FileManagerService';
 import { applyHomeAppearance, HomeAppearance } from '../utils/HomeAppearance';
@@ -271,7 +272,7 @@ struct HomePage {
         showInSubWindow: feature !== HomeFeature.FileManager && feature !== HomeFeature.Settings,
         // PromptAction 的独立子窗口不能同时启用模态。
         isModal: feature === HomeFeature.Settings,
-        autoCancel: feature !== HomeFeature.Settings,
+        autoCancel: true,
         // 文件管理使用透明承载层，内部面板自行缩放并绘制背板；其他弹窗保持原尺寸。
         width: feature === HomeFeature.FileManager ? '100%' : this.homeDialogWidth,
         height: feature === HomeFeature.FileManager ? '100%' : undefined,
@@ -283,8 +284,13 @@ struct HomePage {
           color: '#22000000', offsetX: 0, offsetY: feature === HomeFeature.FileManager ? 0 : 6
         },
         onWillDismiss: (action: DismissDialogAction) => {
-          if (feature === HomeFeature.Settings && AppStorage.get<boolean>('storageBusy')) {
-            return;
+          if (feature === HomeFeature.Settings) {
+            const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+            context.getApplicationContext().eventHub.emit(CANCEL_SHORTCUT_RECORDING);
+            // 点击弹窗外侧只取消键值录入，保留设置页；迁移过程中仍禁止关闭。
+            if (action.reason === DismissReason.TOUCH_OUTSIDE || AppStorage.get<boolean>('storageBusy')) {
+              return;
+            }
           }
           this.homeDialogId = -1;
           action.dismiss();
