@@ -1,9 +1,11 @@
-/* 汇文截图放大取色器：展示鼠标附近像素、选区尺寸和 RGB。 */
+/* 汇文截图放大取色器：原图像素网格、HEX／RGB 色值，不显示坐标与尺寸。 */
 #ifndef HUIWEN_CAPTURE_AMPLIFIER_H
 #define HUIWEN_CAPTURE_AMPLIFIER_H
 
+#include <QImage>
 #include <QWidget>
-#include <memory>
+
+class QPixmap;
 
 /**
  * @brief 汇文截图放大取色器
@@ -13,21 +15,20 @@ class CaptureAmplifier : public QWidget
 {
     Q_OBJECT
   public:
-    explicit CaptureAmplifier(std::shared_ptr<QPixmap> originPainting, QWidget *parent = nullptr);
+    explicit CaptureAmplifier(const QPixmap &originPainting, QWidget *parent = nullptr);
+    QString colorText() const;
+    void toggleColorFormat();
 
   public slots:
-    void onSizeChange(int w, int h);
-    void onPostionChange(int x, int y);
+    void onPostionChange(const QPointF &point);
 
   protected:
     void paintEvent(QPaintEvent *) override;
 
   private:
-    QSize screenSize_;
-    QPoint cursorPoint_;
-    int sideLength_;
-    int imageHeight_;
-    std::shared_ptr<QPixmap> originPainting_;
+    QImage originImage_;
+    QPoint sourcePixel_;
+    bool hexFormat_ = true;
 };
 
 #endif // HUIWEN_CAPTURE_AMPLIFIER_H

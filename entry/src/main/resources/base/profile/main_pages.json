@@ -1,6 +1,7 @@
 {
   "src": [
     "pages/HomePage",
-    "pages/Index"
+    "pages/Index",
+    "pages/ScreenToastPage"
   ]
 }

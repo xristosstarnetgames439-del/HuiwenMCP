@@ -7,6 +7,7 @@
 
 #ifdef Q_OS_OPENHARMONY
 #include "platform/harmony/harmony_screenshot.h"
+#include "platform/harmony/qt_bridge.h"
 // 汇文 CEF 预览的 Ctrl+V 读取鸿蒙系统剪贴板；Qt setPixmap 不保证图片同步过去。
 // 这里把截图以 file:// URI + pixelmap 两条记录同时写入系统 pasteboard，
 // 保证所有 web 窗口 Chromium Ctrl+V 能拿到图片。
@@ -453,6 +454,7 @@ class CaptureOverlay final : public QWidget
             finish(false, QString(), QStringLiteral("无法获取系统鼠标所在屏幕，请重试。"));
             return true;
         }
+        captureDisplayId_ = static_cast<quint32>(displayId);
         // 系统返回屏内像素坐标，必须加上扩展屏原点后才能用于 Qt 虚拟桌面选屏。
         cursorPos = QPoint(originX + qRound(displayX), originY + qRound(displayY));
 #else
@@ -505,7 +507,7 @@ class CaptureOverlay final : public QWidget
             dimmer.fillRect(dimmedScreen_.rect(), QColor(0, 0, 0, 110));
         }
         availableRect_ = screen->availableGeometry();
-        amplifier_ = new CaptureAmplifier(std::make_shared<QPixmap>(screen_), this);
+        amplifier_ = new CaptureAmplifier(screen_, this);
         windowHandle()->setScreen(screen.data());
         setGeometry(screenGeometry);
         showFullScreen();
@@ -595,6 +597,8 @@ class CaptureOverlay final : public QWidget
         }
         if (screen_.isNull() || event->button() != Qt::LeftButton)
             return;
+        if (amplifier_)
+            amplifier_->hide();
 
         // 用户按下左键 → 退出"自动框选阶段"，进入待确认/拖拽/编辑流程
         autoSelectPhase_ = false;
@@ -661,22 +665,7 @@ class CaptureOverlay final : public QWidget
 
     void mouseMoveEvent(QMouseEvent *event) override
     {
-        // 放大镜：仅在框选阶段（自动框选/拖拽框选）跟随鼠标显示，选区确认后隐藏
-        // 汇文截图选区创建完成后隐藏放大镜
-        if (amplifier_)
-        {
-            const bool inSelecting = (autoSelectPhase_ || draggingSelection_) && !pendingConfirm_;
-            if (inSelecting)
-            {
-                amplifier_->onPostionChange(event->pos().x(), event->pos().y());
-                amplifier_->show();
-                amplifier_->raise();
-            }
-            else if (amplifier_->isVisible())
-            {
-                amplifier_->hide();
-            }
-        }
+        updateAmplifier(event->localPos());
         // ====== 自动框选阶段：鼠标移动时按所在区域切换选区 ======
         // 汇文截图自动框选规则：
         //   主窗口内 → 框主窗口；桌面（availableRect 内）→ 框桌面（不含状态栏）；
@@ -732,9 +721,6 @@ class CaptureOverlay final : public QWidget
         if (draggingSelection_)
         {
             selection_.setBottomRight(event->pos());
-            const QRect sel = selection_.normalized();
-            if (amplifier_)
-                amplifier_->onSizeChange(sel.width(), sel.height());
             update();
         }
         else if (drawingMark_)
@@ -799,6 +785,7 @@ class CaptureOverlay final : public QWidget
             positionToolbar();
             toolbar_->show();
             toolbar_->raise();
+            updateAmplifier(event->localPos());
             return;
         }
         if (resizing_)
@@ -835,6 +822,7 @@ class CaptureOverlay final : public QWidget
             toolbar_->show();
             toolbar_->raise();
             update();
+            updateAmplifier(event->localPos());
             return;
         }
         if (movingSelection_)
@@ -844,6 +832,7 @@ class CaptureOverlay final : public QWidget
             toolbar_->show();
             toolbar_->raise();
             setCursor(Qt::CrossCursor);
+            updateAmplifier(event->localPos());
             return;
         }
         if (drawingMark_)
@@ -878,6 +867,7 @@ class CaptureOverlay final : public QWidget
         {
             selection_ = QRect();
         }
+        updateAmplifier(event->localPos());
         update();
     }
 
@@ -894,11 +884,41 @@ class CaptureOverlay final : public QWidget
             dismiss();
             return;
         }
+        // 仅在取色器可见时处理；文字输入、弹窗及组合键保留原行为。
+        if (amplifier_ && amplifier_->isVisible() && !textEditor_->isVisible() &&
+            !QApplication::activePopupWidget() && !event->isAutoRepeat() &&
+            !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)))
+        {
+            if (event->key() == Qt::Key_Shift)
+            {
+                amplifier_->toggleColorFormat();
+                event->accept();
+                return;
+            }
+            if (event->key() == Qt::Key_C)
+            {
+                const QString color = amplifier_->colorText();
+                QApplication::clipboard()->setText(color);
+#ifdef Q_OS_OPENHARMONY
+                // 屏幕浮窗由 ArkTS 独立管理，关闭截图无需等待提示。
+                const QString format = color.startsWith('#') ? "HEX" : "RGB";
+                QtBridge::instance().request(
+                    "colorCopied", QJsonObject{{"format", format},
+                                               { "displayId",
+                                                 static_cast<double>(captureDisplayId_) }});
+#endif
+                event->accept();
+                dismiss(); // 只关闭截图，不保存图片或覆盖刚复制的文本。
+                return;
+            }
+        }
         QWidget::keyPressEvent(event);
     }
 
     bool eventFilter(QObject *watched, QEvent *event) override
     {
+        if (watched == toolbar_ && event->type() == QEvent::Enter && amplifier_)
+            amplifier_->hide();
         if (watched == textEditor_)
         {
             if (event->type() == QEvent::KeyPress &&
@@ -930,9 +950,32 @@ class CaptureOverlay final : public QWidget
     }
 
   private:
+    void updateAmplifier(const QPointF &point)
+    {
+        if (!amplifier_)
+            return;
+        const bool selecting = (autoSelectPhase_ || draggingSelection_) && !pendingConfirm_;
+        const bool picking = selectionReady_ && !autoSelectPhase_ && !pendingConfirm_ &&
+                             toolbar_->isVisible() && currentTool_ == Tool::None &&
+                             QRectF(selection_.normalized()).contains(point) && !resizing_ &&
+                             !movingSelection_ && !drawingMark_ && !textEditor_->isVisible() &&
+                             !QApplication::activePopupWidget();
+        if (selecting || picking)
+        {
+            amplifier_->onPostionChange(point);
+            amplifier_->show();
+            amplifier_->raise();
+        }
+        else
+        {
+            amplifier_->hide();
+        }
+    }
+
     void createToolbar()
     {
         toolbar_ = new CaptureToolbar(this);
+        toolbar_->installEventFilter(this);
         connect(toolbar_, &CaptureToolbar::finishScreen, this, [this]() { saveAndFinish(); });
         connect(toolbar_, &CaptureToolbar::quitScreen, this, [this]() { dismiss(); });
         connect(toolbar_, &CaptureToolbar::saveScreen, this, [this]() { saveAs(); });
@@ -1339,6 +1382,7 @@ class CaptureOverlay final : public QWidget
 
     QPixmap screen_;
     QPixmap dimmedScreen_;
+    quint32 captureDisplayId_ = 0;
     ScreenSnapshots snapshots_;
     QPointer<QWidget> hiddenWindow_;
     ScreenCapture::FinishCallback callback_;
@@ -1372,7 +1416,7 @@ class CaptureOverlay final : public QWidget
     QRect availableRect_;
     // 是否处于"自动框选阶段"（鼠标移动可动态切换选区；按下/拖拽/确认后退出）
     bool autoSelectPhase_ = false;
-    // 放大取色器（鼠标位置局部放大 + RGB 取值）
+    // 放大取色器：原图像素网格、HEX／RGB 切换和色值复制。
     CaptureAmplifier *amplifier_ = nullptr;
 };
 

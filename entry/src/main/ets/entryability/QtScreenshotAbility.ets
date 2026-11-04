@@ -2,11 +2,15 @@
 import { UIAbility, Want, AbilityConstant } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import qpa from 'libplugins_platforms_qopenharmony.so';
 import nativeBridge from 'libhuiwen_native.so';
+import { showScreenToast } from '../services/screenshot/ScreenToast';
 
 interface ScreenshotResult {
   action: string;
+  format: string;
+  displayId: number;
   path: string;
   error: string;
 }
@@ -44,9 +48,19 @@ export default class QtScreenshotAbility extends UIAbility {
       const mainWindow = windowStage.getMainWindowSync();
       mainWindow.setWindowBackgroundColor('#00000000');
       mainWindow.setWindowDecorVisible(false);
+      const screenshotContext = this.context;
       // 不注册 CEF 平台代理、不加载文件任务，也不向首页发送工作区 ready。
       nativeBridge.registerWorkspace((json: string) => {
         const result = JSON.parse(json) as ScreenshotResult;
+        if (result.action === 'colorCopied') {
+          // 独立浮窗使用有效的 Ability 上下文加载页面，不依赖首页。
+          showScreenToast(screenshotContext, `${result.format} 色值已复制到剪贴板`, result.displayId)
+            .catch((error: BusinessError) => {
+              hilog.warn(0xFF00, 'HuiwenScreenshot',
+                'HUIWEN_SCREEN_TOAST_FAILED: code=%{public}d message=%{public}s', error.code ?? -1, error.message);
+            });
+          return;
+        }
         if (result.action !== 'screenshotFinished') {
           return;
         }
