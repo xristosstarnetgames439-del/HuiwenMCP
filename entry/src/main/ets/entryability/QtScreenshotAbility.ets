@@ -7,7 +7,7 @@ import qpa from 'libplugins_platforms_qopenharmony.so';
 import nativeBridge from 'libhuiwen_native.so';
 import { showScreenToast } from '../services/screenshot/ScreenToast';
 import { finishScreenshot } from '../services/screenshot/ScreenshotService';
-import { rememberColor, rememberScreenshot } from '../services/screenshot/ScreenshotHistory';
+import { downloadScreenshot, rememberColor, rememberScreenshot } from '../services/screenshot/ScreenshotHistory';
 import { screenshotCacheRoot } from '../services/settings/AppSettings';
 
 interface ScreenshotResult {
@@ -27,6 +27,7 @@ export default class QtScreenshotAbility extends UIAbility {
   private launchApplication: string = 'libhuiwen_qt.so';
   private launchParams: string = '';
   private contentReady: () => void = () => {};
+  private destroyed: boolean = false;
 
   newLocalStorage(): LocalStorage {
     const storage = new LocalStorage();
@@ -59,6 +60,10 @@ export default class QtScreenshotAbility extends UIAbility {
       // 不注册 CEF 平台代理、不加载文件任务，也不向首页发送工作区 ready。
       nativeBridge.registerWorkspace((json: string) => {
         const result = JSON.parse(json) as ScreenshotResult;
+        if (result.action === 'downloadScreenshot') {
+          this.download(result);
+          return;
+        }
         if (result.action === 'colorCopied') {
           rememberColor(screenshotContext.getApplicationContext(), result.value, result.color)
             .catch((error: Error) => {
@@ -96,6 +101,29 @@ export default class QtScreenshotAbility extends UIAbility {
     }
   }
 
+  private async download(result: ScreenshotResult): Promise<void> {
+    let path = '';
+    let error = '';
+    try {
+      if (result.error !== '') { throw new Error(result.error); }
+      path = await downloadScreenshot(this.context, result.path);
+      hilog.info(0xFF00, 'HuiwenScreenshot', 'HUIWEN_SCREENSHOT_DOWNLOADED: %{public}s', path);
+    } catch (failure) {
+      error = (failure as Error).message;
+      hilog.error(0xFF00, 'HuiwenScreenshot', 'HUIWEN_SCREENSHOT_DOWNLOAD_FAILED: %{public}s', error);
+    }
+    if (this.destroyed) { return; }
+    try {
+      await showScreenToast(this.context, error || '截图已保存到设置的目录', result.displayId);
+    } catch (failure) {
+      hilog.warn(0xFF00, 'HuiwenScreenshot', 'HUIWEN_SCREEN_TOAST_FAILED: %{public}s', (failure as Error).message);
+    }
+    // 用户可能在异步保存期间取消截图；旧宿主不能向下一次 Qt 会话发送回包。
+    if (!this.destroyed) {
+      nativeBridge.workspaceReply(JSON.stringify({ action: 'downloadScreenshot', path: path, error: error }));
+    }
+  }
+
   private failStart(error: Error): void {
     finishScreenshot();
     nativeBridge.clearPreparedScreenshot();
@@ -109,6 +137,7 @@ export default class QtScreenshotAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    this.destroyed = true;
     finishScreenshot();
     nativeBridge.clearPreparedScreenshot();
     this.context.getApplicationContext().eventHub.off('huiwen.screenshot.contentReady', this.contentReady);

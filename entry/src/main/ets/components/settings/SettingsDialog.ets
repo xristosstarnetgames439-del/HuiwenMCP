@@ -156,7 +156,9 @@ export struct SettingsDialog {
     this.message = '';
     try {
       if (cache) { await closeScreenshotPreview(); }
-      await changeScreenshotDirectory(this.context(), cache, restore);
+      if (await changeScreenshotDirectory(this.context(), cache, restore)) {
+        this.message = cache ? '截图缓存目录已更新' : '截图下载目录已创建并可用';
+      }
     } catch (error) {
       this.message = (error as Error).message;
     } finally {
@@ -167,11 +169,17 @@ export struct SettingsDialog {
   }
 
   private async browseScreenshotLocation(cache: boolean): Promise<void> {
+    this.busy = true;
+    AppStorage.setOrCreate('storageBusy', true);
     this.message = '';
     try {
       await openScreenshotDirectory(this.context(), cache);
     } catch (error) {
       this.message = `无法打开截图目录：${(error as Error).message}`;
+    } finally {
+      this.reload();
+      this.busy = false;
+      AppStorage.setOrCreate('storageBusy', false);
     }
   }
 

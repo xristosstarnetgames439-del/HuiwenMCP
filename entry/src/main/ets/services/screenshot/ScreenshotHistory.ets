@@ -1,7 +1,7 @@
 // 截图记录与存储：界面和 Qt 回调共用此入口；只淘汰本模块的缓存，不删除下载副本。
 import { common } from '@kit.AbilityKit';
 import { fileIo, fileUri, fileShare, picker } from '@kit.CoreFileKit';
-import { pasteboard } from '@kit.BasicServicesKit';
+import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { image } from '@kit.ImageKit';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -42,19 +42,72 @@ function policy(uri: string): fileShare.PolicyInfo {
 }
 
 async function activate(uri: string): Promise<void> {
-  if (uri !== '') { await fileShare.activatePermission([policy(uri)]); }
+  try {
+    if (uri !== '') { await fileShare.activatePermission([policy(uri)]); }
+  } catch (error) {
+    throw directoryError('激活目录授权', error as BusinessError);
+  }
+}
+
+function directoryError(action: string, error: BusinessError): Error {
+  return new Error(`${action}失败${typeof error.code === 'number' ? `（${error.code}）` : ''}：${error.message}`);
+}
+
+function exists(path: string): boolean {
+  try {
+    return fileIo.accessSync(path);
+  } catch (error) {
+    // 部分文件服务对不存在的路径抛 ENOENT，不能把它当成权限失败而跳过创建。
+    if ((error as BusinessError).code === 13900002) { return false; }
+    throw error as Error;
+  }
+}
+
+// 公共目录沿用系统选择器的 docs URI；getUriFromPath 只用于应用沙箱路径。
+function directoryUri(root: string, grant: string = ''): string {
+  if (grant !== '') {
+    const parent = new fileUri.FileUri(grant).path.replace(/\/$/, '');
+    if (root !== parent && !root.startsWith(`${parent}/`)) {
+      throw new Error('截图目录不在已授权的范围内，请重新设置目录');
+    }
+    return grant.replace(/\/$/, '') + root.substring(parent.length).split('/')
+      .map((part: string): string => encodeURIComponent(part)).join('/');
+  }
+  return root.startsWith('/storage/Users/') ? `file://docs${root.split('/')
+    .map((part: string): string => encodeURIComponent(part)).join('/')}` : fileUri.getUriFromPath(root);
 }
 
 function ensureDirectory(root: string): void {
-  if (!fileIo.accessSync(root)) { fileIo.mkdirSync(root, true); }
-  if (!fileIo.lstatSync(root).isDirectory() || fileIo.lstatSync(root).isSymbolicLink()) {
-    throw new Error('截图目录必须是普通文件夹');
+  try {
+    if (!exists(root)) { fileIo.mkdirSync(root, true); }
+    if (!fileIo.lstatSync(root).isDirectory() || fileIo.lstatSync(root).isSymbolicLink()) {
+      throw new Error('截图目录必须是普通文件夹');
+    }
+  } catch (error) {
+    throw directoryError('创建或检查截图目录', error as BusinessError);
+  }
+}
+
+function ensureWritableDirectory(root: string): void {
+  ensureDirectory(root);
+  const probe = `${root}/.huiwen_write_check_${Date.now()}_${++imageSequence}`;
+  try {
+    const file = fileIo.openSync(probe, fileIo.OpenMode.CREATE | fileIo.OpenMode.WRITE_ONLY);
+    try {
+      if (fileIo.writeSync(file.fd, '1') !== 1) { throw new Error('写入检查未完成'); }
+      fileIo.fsyncSync(file.fd);
+    } finally {
+      fileIo.closeSync(file);
+      fileIo.unlinkSync(probe);
+    }
+  } catch (error) {
+    throw directoryError('检查目录写入权限', error as BusinessError);
   }
 }
 
 function readHistory(root: string): ScreenshotHistory {
   const path = `${root}/history.json`;
-  if (!fileIo.accessSync(path)) { return { images: [], colors: [] }; }
+  if (!exists(path)) { return { images: [], colors: [] }; }
   const history = JSON.parse(fileIo.readTextSync(path)) as ScreenshotHistory;
   if (!Array.isArray(history.images) || !Array.isArray(history.colors)) {
     throw new Error('截图历史记录格式错误，原文件已保留');
@@ -62,7 +115,7 @@ function readHistory(root: string): ScreenshotHistory {
   return {
     images: history.images.filter((item: ScreenshotImage) =>
       /^capture_[0-9_]+\.png$/.test(item.name) && Number.isFinite(item.createdAt) &&
-      fileIo.accessSync(`${root}/${item.name}`)).slice(0, HISTORY_LIMIT),
+      exists(`${root}/${item.name}`)).slice(0, HISTORY_LIMIT),
     colors: history.colors.filter((item: ScreenshotColor) =>
       /^#[0-9a-fA-F]{6}$/.test(item.color) && typeof item.value === 'string' &&
       Number.isFinite(item.createdAt)).slice(0, HISTORY_LIMIT)
@@ -155,7 +208,7 @@ export async function copyScreenshotImage(path: string): Promise<void> {
 
 function removeCache(path: string): void {
   try {
-    if (fileIo.accessSync(path)) { fileIo.unlinkSync(path); }
+    if (exists(path)) { fileIo.unlinkSync(path); }
   } catch (error) {
     hilog.warn(0xFF00, 'HuiwenScreenshot', 'HUIWEN_SCREENSHOT_CACHE_CLEAN_FAILED: %{public}s', (error as Error).message);
   }
@@ -178,7 +231,7 @@ async function digest(path: string): Promise<Uint8Array> {
 }
 
 async function copyVerified(source: string, target: string): Promise<void> {
-  if (fileIo.accessSync(target)) { throw new Error('目标图片已存在，请重试'); }
+  if (exists(target)) { throw new Error('目标图片已存在，请重试'); }
   if (!fileIo.lstatSync(source).isFile() || fileIo.lstatSync(source).isSymbolicLink()) {
     throw new Error('截图源文件无效');
   }
@@ -195,29 +248,61 @@ async function copyVerified(source: string, target: string): Promise<void> {
   }
 }
 
-// 下载只生成副本，不改变缓存历史。权限不足时使用系统目录选择器获取持久授权。
+// 下载不打开选择器、不修改配置；授权和目录创建由设置页提前完成。
 export async function downloadScreenshot(context: common.UIAbilityContext, path: string): Promise<string> {
-  let root = screenshotDownloadRoot(context);
+  const settings = readSettings(context);
+  const root = screenshotDownloadRoot(context);
   try {
-    await activate(readSettings(context).screenshotDownloadUri);
+    await activate(settings.screenshotDownloadUri);
+    directoryUri(root, settings.screenshotDownloadUri);
     ensureDirectory(root);
-    if (!fileIo.accessSync(root, fileIo.AccessModeType.WRITE)) { throw new Error('下载目录没有写入权限'); }
-  } catch (_) {
-    if (!await changeScreenshotDirectory(context, false, false)) { return ''; }
-    root = screenshotDownloadRoot(context);
+  } catch (error) {
+    throw new Error(`下载目录不可用，请到应用设置的截图设置中浏览或修改下载目录以完成授权。${(error as Error).message}`);
   }
-  ensureDirectory(root);
-  const target = `${root}/HuiWenScreenShot_${Date.now()}.png`;
+  const target = `${root}/HuiWenScreenShot_${Date.now()}_${++imageSequence}.png`;
   await copyVerified(path, target);
   return target;
 }
 
 export async function openScreenshotDirectory(context: common.UIAbilityContext, cache: boolean): Promise<void> {
   const settings = readSettings(context);
-  await activate(cache ? settings.screenshotCacheUri : settings.screenshotDownloadUri);
+  let uri = cache ? settings.screenshotCacheUri : settings.screenshotDownloadUri;
   const root = cache ? screenshotCacheRoot(context) : screenshotDownloadRoot(context);
-  ensureDirectory(root);
-  await context.openLink('filemanager://openDirectory', { parameters: { fileUri: fileUri.getUriFromPath(root) } });
+  if (!cache && uri === '') {
+    // 默认相册子目录可能尚未创建，先授权已存在的图片父目录，再创建 gallery 和应用子目录。
+    uri = await selectScreenshotDirectory(context, root === DEFAULT_SCREENSHOT_DOWNLOAD_DIR ?
+      '/storage/Users/currentUser/Images' : root.substring(0, root.lastIndexOf('/')));
+    if (uri === '') { return; }
+    directoryUri(root, uri);
+    await fileShare.persistPermission([policy(uri)]);
+  }
+  await activate(uri);
+  const targetUri = directoryUri(root, uri);
+  ensureWritableDirectory(root);
+  if (!cache && uri !== settings.screenshotDownloadUri) {
+    await update(async () => {
+      const next = readSettings(context);
+      next.screenshotDownloadUri = uri;
+      await saveSettings(context, next);
+    });
+  }
+  try {
+    await context.openLink('filemanager://openDirectory', { parameters: { fileUri: targetUri } });
+  } catch (error) {
+    throw directoryError('打开截图目录', error as BusinessError);
+  }
+}
+
+async function selectScreenshotDirectory(context: common.UIAbilityContext, authorizeRoot: string = ''): Promise<string> {
+  const options = new picker.DocumentSelectOptions();
+  options.selectMode = picker.DocumentSelectMode.FOLDER;
+  options.maxSelectNumber = 1;
+  if (authorizeRoot !== '') {
+    options.authMode = true;
+    options.defaultFilePathUri = directoryUri(authorizeRoot);
+  }
+  const uris = await new picker.DocumentViewPicker(context).select(options);
+  return uris.length === 0 ? '' : uris[0];
 }
 
 export async function changeScreenshotDirectory(context: common.UIAbilityContext, cache: boolean,
@@ -225,21 +310,22 @@ export async function changeScreenshotDirectory(context: common.UIAbilityContext
   let uri = '';
   let destination = cache ? `${context.getApplicationContext().filesDir}/screenshots` :
     DEFAULT_SCREENSHOT_DOWNLOAD_DIR;
-  if (!restore) {
-    const options = new picker.DocumentSelectOptions();
-    options.selectMode = picker.DocumentSelectMode.FOLDER;
-    options.maxSelectNumber = 1;
-    const uris = await new picker.DocumentViewPicker(context).select(options);
-    if (uris.length === 0) { return false; }
-    uri = uris[0];
+  if (!restore || !cache) {
+    uri = await selectScreenshotDirectory(context, restore ? '/storage/Users/currentUser/Images' : '');
+    if (uri === '') { return false; }
+    if (!restore) {
+      const selected = new fileUri.FileUri(uri).path.replace(/\/$/, '');
+      destination = selected.endsWith('/HuiWenScreenShot') ? selected : `${selected}/HuiWenScreenShot`;
+    }
+    directoryUri(destination, uri);
     await fileShare.persistPermission([policy(uri)]);
     await activate(uri);
-    const selected = new fileUri.FileUri(uri).path.replace(/\/$/, '');
-    destination = selected.endsWith('/HuiWenScreenShot') ? selected : `${selected}/HuiWenScreenShot`;
   }
   await update(async () => {
     const settings = readSettings(context);
     if (!cache) {
+      // 目标确实创建且可写后才保存配置，失败保留原下载位置。
+      ensureWritableDirectory(destination);
       settings.screenshotDownloadRoot = restore ? '' : destination;
       settings.screenshotDownloadUri = uri;
       await saveSettings(context, settings);
@@ -251,7 +337,7 @@ export async function changeScreenshotDirectory(context: common.UIAbilityContext
     if (destination.startsWith(`${source}/`) || source.startsWith(`${destination}/`)) {
       throw new Error('截图缓存的新旧目录不能相互包含');
     }
-    ensureDirectory(destination);
+    ensureWritableDirectory(destination);
     if (fileIo.listFileSync(destination).length !== 0) { throw new Error('目标缓存文件夹非空，请选择其他位置'); }
     const history = readHistory(source);
     try {

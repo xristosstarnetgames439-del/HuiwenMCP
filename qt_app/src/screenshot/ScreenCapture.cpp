@@ -8,6 +8,7 @@
 #ifdef Q_OS_OPENHARMONY
 #include "platform/harmony/harmony_screenshot.h"
 #include "platform/harmony/qt_bridge.h"
+#include <QJsonDocument>
 // 汇文 CEF 预览的 Ctrl+V 读取鸿蒙系统剪贴板；Qt setPixmap 不保证图片同步过去。
 // 这里把截图以 file:// URI + pixelmap 两条记录同时写入系统 pasteboard，
 // 保证所有 web 窗口 Chromium Ctrl+V 能拿到图片。
@@ -28,7 +29,9 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#ifndef Q_OS_OPENHARMONY
 #include <QFileDialog>
+#endif
 #include <QGuiApplication>
 #include <QImage>
 #include <QKeyEvent>
@@ -404,6 +407,21 @@ class CaptureOverlay final : public QWidget
         setAttribute(Qt::WA_DeleteOnClose);
         createToolbar();
         createTextEditor();
+#ifdef Q_OS_OPENHARMONY
+        connect(&QtBridge::instance(), &QtBridge::replyReceived, this, [this](const QString &json) {
+            const auto result = QJsonDocument::fromJson(json.toUtf8()).object();
+            if (result.value("action").toString() != "downloadScreenshot" || !downloadPending_)
+                return;
+            downloadPending_ = false;
+            toolbar_->setEnabled(true);
+            if (result.value("error").toString().isEmpty() &&
+                !result.value("path").toString().isEmpty())
+                finish(true, downloadPath_, QString(), true);
+            else
+                qWarning() << "HUIWEN_SCREENSHOT_DOWNLOAD_FAILED:"
+                           << result.value("error").toString();
+        });
+#endif
         // 记录截图启动时的主窗口矩形（屏幕坐标）。
         // hiddenWindow 是 ignoreActiveWindow=true 时被 hide 的主窗口，
         // 此时仍可通过 geometry() 拿到截图前的位置；用于"鼠标在主窗口内 → 框选主窗口"判断。
@@ -884,6 +902,11 @@ class CaptureOverlay final : public QWidget
             dismiss();
             return;
         }
+        if (downloadPending_)
+        {
+            event->accept();
+            return;
+        }
         // 仅在取色器可见时处理；文字输入、弹窗及组合键保留原行为。
         if (amplifier_ && amplifier_->isVisible() && !textEditor_->isVisible() &&
             !QApplication::activePopupWidget() && !event->isAutoRepeat() &&
@@ -980,7 +1003,7 @@ class CaptureOverlay final : public QWidget
         toolbar_->installEventFilter(this);
         connect(toolbar_, &CaptureToolbar::finishScreen, this, [this]() { saveAndFinish(); });
         connect(toolbar_, &CaptureToolbar::quitScreen, this, [this]() { dismiss(); });
-        connect(toolbar_, &CaptureToolbar::saveScreen, this, [this]() { saveAs(); });
+        connect(toolbar_, &CaptureToolbar::saveScreen, this, [this]() { downloadSelection(); });
         connect(toolbar_, &CaptureToolbar::changeEditState, this,
                 [this](CaptureToolbar::CaptureEditState state) {
                     if (state == CaptureToolbar::CES_UNDO)
@@ -1265,10 +1288,32 @@ class CaptureOverlay final : public QWidget
         return result;
     }
 
-    void saveAs()
+    void downloadSelection()
     {
         if (!selectionReady_)
             return;
+#ifdef Q_OS_OPENHARMONY
+        if (downloadPending_)
+            return;
+        commitTextEdit();
+        if (!downloadPath_.isEmpty())
+            QFile::remove(downloadPath_);
+        QString error;
+        downloadPath_ = saveCapture(capturePixmap(), error);
+        downloadPending_ = true;
+        toolbar_->setEnabled(false);
+        // 系统目录与权限只由 ArkTS 管理；成功回包后才关闭选区，失败仍可继续操作。
+        if (!QtBridge::instance().request("downloadScreenshot",
+                                          QJsonObject{{"path", downloadPath_},
+                                                      {"error", error},
+                                                      { "displayId",
+                                                        static_cast<double>(captureDisplayId_) }}))
+        {
+            downloadPending_ = false;
+            toolbar_->setEnabled(true);
+            qWarning() << "HUIWEN_SCREENSHOT_DOWNLOAD_FAILED: 截图桥接不可用";
+        }
+#else
         commitTextEdit();
         const QString path = QFileDialog::getSaveFileName(this, QStringLiteral("保存图片"),
                                                           QStringLiteral("截图.png"),
@@ -1280,6 +1325,7 @@ class CaptureOverlay final : public QWidget
             else
                 qWarning() << "HUIWEN_SCREENSHOT: 另存为失败" << path;
         }
+#endif
     }
 
     void dismiss()
@@ -1287,15 +1333,8 @@ class CaptureOverlay final : public QWidget
         finish(false, QString(), QString());
     }
 
-    void saveAndFinish()
+    QString saveCapture(const QPixmap &captured, QString &error)
     {
-        if (!selectionReady_)
-            return;
-        commitTextEdit();
-        const QPixmap captured = capturePixmap();
-        // 截图完成后同步写入汇文 Qt 剪贴板。
-        QApplication::clipboard()->setPixmap(captured, QClipboard::Clipboard);
-
         // 鸿蒙传入已授权的缓存目录，图片与剪贴板 URI 共用同一文件，不再入库后删除原图。
         QDir dir(cacheDirectory_.isEmpty()
                      ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
@@ -1303,16 +1342,34 @@ class CaptureOverlay final : public QWidget
                      : cacheDirectory_);
         if (!dir.exists() && !dir.mkpath(QStringLiteral(".")))
         {
-            finish(false, QString(), QStringLiteral("无法创建截图缓存目录。"));
-            return;
+            error = QStringLiteral("无法创建截图缓存目录。");
+            return {};
         }
         const QString path =
             dir.filePath(QStringLiteral("capture_%1.png").arg(QDateTime::currentMSecsSinceEpoch()));
         if (!captured.save(path, "PNG"))
         {
-            finish(false, QString(), QStringLiteral("截图保存失败。"));
+            QFile::remove(path);
+            error = QStringLiteral("截图保存失败。");
+            return {};
+        }
+        return path;
+    }
+
+    void saveAndFinish()
+    {
+        if (!selectionReady_ || downloadPending_)
+            return;
+        commitTextEdit();
+        const QPixmap captured = capturePixmap();
+        QString error;
+        const QString path = saveCapture(captured, error);
+        if (path.isEmpty())
+        {
+            finish(false, QString(), error);
             return;
         }
+        QApplication::clipboard()->setPixmap(captured, QClipboard::Clipboard);
 
 #ifdef Q_OS_OPENHARMONY
         // 汇文 CEF 窗口的 Ctrl+V 由 Chromium 直接读取 OHOS
@@ -1336,6 +1393,8 @@ class CaptureOverlay final : public QWidget
         if (finished_)
             return;
         finished_ = true;
+        if (!downloadPath_.isEmpty() && (!ok || downloadPath_ != path))
+            QFile::remove(downloadPath_); // 失败或取消时只清理未入库的下载暂存图。
         snapshots_.clear();
         // 结束截图前释放输入法客户端，避免影响后续 CEF 输入。
         if (textEditor_)
@@ -1392,6 +1451,8 @@ class CaptureOverlay final : public QWidget
     QPointer<QWidget> hiddenWindow_;
     ScreenCapture::FinishCallback callback_;
     QString cacheDirectory_;
+    QString downloadPath_;
+    bool downloadPending_ = false;
     CaptureToolbar *toolbar_ = nullptr;
     QLineEdit *textEditor_ = nullptr;
     QList<Mark> marks_;

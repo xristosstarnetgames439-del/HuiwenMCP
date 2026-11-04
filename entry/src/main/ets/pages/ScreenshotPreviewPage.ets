@@ -26,7 +26,7 @@ struct ScreenshotPreviewPage {
       if (download) {
         const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
         const saved = await downloadScreenshot(context, this.path);
-        if (saved !== '') { this.getUIContext().getPromptAction().showToast({ message: `已保存到 ${saved}` }); }
+        this.getUIContext().getPromptAction().showToast({ message: `已保存到 ${saved}` });
       } else {
         await copyScreenshotImage(this.path);
         this.getUIContext().getPromptAction().showToast({ message: '图片已复制到剪贴板' });
