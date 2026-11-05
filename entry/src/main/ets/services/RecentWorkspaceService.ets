@@ -38,6 +38,7 @@ function formatLabel(document: HarmonySandboxDocument): string {
 // 首页和文件管理共用支持规则；DOC 仍由工作区静默转换后预览。
 export function canOpenWorkspace(mode: string, kind: string, name: string): boolean {
   return (mode === 'convert' && kind === 'pdf') ||
+    (mode === 'edit' && kind === 'md') ||
     (mode === 'preview' && (kind === 'pdf' || kind === 'md' ||
       (kind === 'word' && (name.toLowerCase().endsWith('.doc') || name.toLowerCase().endsWith('.docx')))));
 }
