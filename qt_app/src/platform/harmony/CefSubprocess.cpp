@@ -77,6 +77,30 @@ class ScrollReporter final : public CefV8Handler
     IMPLEMENT_REFCOUNTING(ScrollReporter);
 };
 
+class MarkdownReporter final : public CefV8Handler
+{
+  public:
+    bool Execute(const CefString &, CefRefPtr<CefV8Value>, const CefV8ValueList &arguments,
+                 CefRefPtr<CefV8Value> &retval, CefString &) override
+    {
+        const auto context = CefV8Context::GetCurrentContext();
+        if (arguments.size() != 1 || !arguments[0]->IsString() || !context ||
+            !context->GetFrame()->IsMain())
+            return false;
+        const auto json = arguments[0]->GetStringValue();
+        if (json.length() > 100 * 1024 * 1024)
+            return false;
+        const auto message = CefProcessMessage::Create("Huiwen.Markdown");
+        message->GetArgumentList()->SetString(0, json);
+        context->GetFrame()->SendProcessMessage(PID_BROWSER, message);
+        retval = CefV8Value::CreateUndefined();
+        return true;
+    }
+
+  private:
+    IMPLEMENT_REFCOUNTING(MarkdownReporter);
+};
+
 class PreviewRenderApp final : public CefApp, public CefRenderProcessHandler
 {
   public:
@@ -85,9 +109,16 @@ class PreviewRenderApp final : public CefApp, public CefRenderProcessHandler
                           CefRefPtr<CefV8Context> context) override
     {
         const auto url = frame->GetURL().ToString();
-        if (frame->IsMain() && (url == "https://huiwen-md.invalid/preview.html" ||
+        const bool markdownWorkspace = url == "https://huiwen-md.invalid/editor.html" ||
+                                       url == "https://huiwen-md.invalid/live.html";
+        if (frame->IsMain() && (markdownWorkspace || url == "https://huiwen-md.invalid/preview.html" ||
                                url.rfind("data:text/html;base64,", 0) == 0))
         {
+            if (markdownWorkspace)
+                context->GetGlobal()->SetValue(
+                    "huiwenReportMarkdown",
+                    CefV8Value::CreateFunction("huiwenReportMarkdown", new MarkdownReporter),
+                    V8_PROPERTY_ATTRIBUTE_READONLY);
             context->GetGlobal()->SetValue(
                 "huiwenReportScroll", CefV8Value::CreateFunction("huiwenReportScroll", new ScrollReporter),
                 V8_PROPERTY_ATTRIBUTE_READONLY);

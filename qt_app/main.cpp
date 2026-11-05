@@ -75,6 +75,12 @@ int main(int argc, char *argv[])
                              bridge.request("ready"))
                              readyTimer.stop();
                      });
+    QObject::connect(&bridge, &QtBridge::closeApprovalRequested, &app, [&] {
+        if (window)
+            window->requestClosePermission([&bridge](bool ok) {
+                bridge.request(ok ? QStringLiteral("closeApproved") : QStringLiteral("closeCancelled"));
+            });
+    });
     QObject::connect(&bridge, &QtBridge::closeRequested, &app,
                      [&]
                      {

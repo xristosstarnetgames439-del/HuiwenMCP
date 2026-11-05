@@ -198,11 +198,14 @@ class PreviewClient final : public CefClient,
   public:
     using Notice = std::function<void(bool, const QString &)>;
     using ScrollNotice = std::function<void(int, double, double)>;
+    using MarkdownNotice = std::function<void(const QJsonObject &)>;
     PreviewClient(QString url, QByteArray html, QString text, QString imageRoot,
-                  bool scrollBarVisible, Notice notice, ScrollNotice scrollNotice)
+                  bool scrollBarVisible, Notice notice, ScrollNotice scrollNotice,
+                  MarkdownNotice markdownNotice)
         : url_(std::move(url)), html_(std::move(html)), text_(std::move(text)),
           imageRoot_(std::move(imageRoot)), notice_(std::move(notice)),
-          scrollNotice_(std::move(scrollNotice)), scrollBarVisible_(scrollBarVisible)
+          scrollNotice_(std::move(scrollNotice)), markdownNotice_(std::move(markdownNotice)),
+          scrollBarVisible_(scrollBarVisible)
     {
     }
     CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
@@ -244,7 +247,12 @@ class PreviewClient final : public CefClient,
                 200, "OK", "text/html",
                 {{"Cache-Control", "no-store"}, {"X-Content-Type-Options", "nosniff"}}, stream);
         }
-        if (imageRoot_.isEmpty() || request->GetResourceType() != RT_IMAGE)
+        QString imageRoot;
+        {
+            std::lock_guard<std::mutex> lock(imageRootMutex_);
+            imageRoot = imageRoot_;
+        }
+        if (imageRoot.isEmpty() || request->GetResourceType() != RT_IMAGE)
             return missing();
         const QUrl url(QString::fromStdString(request->GetURL().ToString()));
         if (url.path() != QStringLiteral("/image") || url.hasFragment())
@@ -255,9 +263,9 @@ class PreviewClient final : public CefClient,
             relative.contains(QChar(0)) || relative.contains(QLatin1Char('\\')) ||
             relative.contains(QLatin1Char(':')))
             return missing();
-        const QFileInfo file(QDir(imageRoot_).filePath(relative));
+        const QFileInfo file(QDir(imageRoot).filePath(relative));
         const QString canonical = file.canonicalFilePath();
-        if (!canonical.startsWith(imageRoot_ + QLatin1Char('/')) || !file.isFile() ||
+        if (!canonical.startsWith(imageRoot + QLatin1Char('/')) || !file.isFile() ||
             file.size() <= 0 || file.size() > 32 * 1024 * 1024)
             return missing();
         const QString extension = QFileInfo(canonical).suffix().toLower();
@@ -350,6 +358,21 @@ class PreviewClient final : public CefClient,
                                 .arg(QString::fromUtf8(arguments));
         browser_->GetMainFrame()->ExecuteJavaScript(script.toStdString(), url_.toStdString(), 0);
     }
+    void sendMarkdown(const QJsonObject &message)
+    {
+        if (message.value("type").toString() == QStringLiteral("location"))
+        {
+            std::lock_guard<std::mutex> lock(imageRootMutex_);
+            imageRoot_ = QFileInfo(message.value("path").toString()).canonicalPath();
+            return;
+        }
+        if (!browser_ || !loaded_ || closing_)
+            return;
+        const auto json = QJsonDocument(message).toJson(QJsonDocument::Compact);
+        const auto script = QStringLiteral("window.HuiwenPreview.receive(%1);")
+                                .arg(QString::fromUtf8(json));
+        browser_->GetMainFrame()->ExecuteJavaScript(script.toStdString(), url_.toStdString(), 0);
+    }
     void publishScrollPosition()
     {
         if (!browser_ || !loaded_ || closing_)
@@ -379,13 +402,29 @@ class PreviewClient final : public CefClient,
                                   CefProcessId source,
                                   CefRefPtr<CefProcessMessage> message) override
     {
-        if (message->GetName() != "Huiwen.PreviewScroll" &&
+        if (message->GetName() != "Huiwen.Markdown" &&
+            message->GetName() != "Huiwen.PreviewScroll" &&
             message->GetName() != "Huiwen.PreviewState")
             return false;
         if (closing_ || !frameLoaded_ || source != PID_RENDERER || !frame->IsMain() ||
             frame->GetURL().ToString() != url_.toStdString())
             return true;
         const auto values = message->GetArgumentList();
+        if (message->GetName() == "Huiwen.Markdown")
+        {
+            if ((url_ != QStringLiteral("https://huiwen-md.invalid/editor.html") &&
+                 url_ != QStringLiteral("https://huiwen-md.invalid/live.html")) ||
+                values->GetSize() != 1 || values->GetType(0) != VTYPE_STRING)
+                return true;
+            const auto json = values->GetString(0).ToString();
+            if (json.size() <= 100 * 1024 * 1024)
+            {
+                const auto data = QJsonDocument::fromJson(QByteArray::fromStdString(json));
+                if (data.isObject())
+                    markdownNotice_(data.object());
+            }
+            return true;
+        }
         if (message->GetName() == "Huiwen.PreviewState")
         {
             if (values->GetSize() != 2 || values->GetType(0) != VTYPE_BOOL ||
@@ -545,9 +584,11 @@ class PreviewClient final : public CefClient,
     QString url_;
     const QByteArray html_;
     QString text_;
-    const QString imageRoot_;
+    std::mutex imageRootMutex_;
+    QString imageRoot_;
     Notice notice_;
     ScrollNotice scrollNotice_;
+    MarkdownNotice markdownNotice_;
     CefRefPtr<CefBrowser> browser_;
     bool closing_ = false;
     bool loaded_ = false;
@@ -654,11 +695,15 @@ void CefDocumentPreviewWidget::setDocument(const QString &path)
         return;
     }
     d_->html.clear();
-    if (d_->format == Format::Markdown)
+    if (d_->format != Format::Word)
     {
         // Rich preview assets exceed Chromium's URL limit; serve bytes through CEF instead.
         d_->html = page.readAll();
-        d_->url = QStringLiteral("https://huiwen-md.invalid/preview.html");
+        d_->url = d_->format == Format::MarkdownEditor
+                      ? QStringLiteral("https://huiwen-md.invalid/editor.html")
+                  : d_->format == Format::MarkdownLive
+                      ? QStringLiteral("https://huiwen-md.invalid/live.html")
+                      : QStringLiteral("https://huiwen-md.invalid/preview.html");
     }
     else
         d_->url = QStringLiteral("data:text/html;base64,") +
@@ -676,6 +721,8 @@ void CefDocumentPreviewWidget::openBrowser()
 #ifdef Q_OS_OPENHARMONY
     if (d_->client)
     {
+        if (d_->ready)
+            return;
         if (d_->waiting.elapsed() > 15000)
         {
             closeBrowser();
@@ -709,7 +756,7 @@ void CefDocumentPreviewWidget::openBrowser()
     QPointer<CefDocumentPreviewWidget> self(this);
     d_->client = new PreviewClient(
         d_->url, d_->html, d_->text,
-        d_->format == Format::Markdown ? QFileInfo(d_->path).canonicalPath() : QString(),
+        d_->format != Format::Word ? QFileInfo(d_->path).canonicalPath() : QString(),
         d_->scrollBarVisible,
         [self, generation](bool ready, const QString &error)
         {
@@ -721,6 +768,13 @@ void CefDocumentPreviewWidget::openBrowser()
                         return;
                     self->d_->timer->stop();
                     self->d_->status->setVisible(!ready);
+                    if (ready && (self->d_->format == Format::MarkdownEditor ||
+                                  self->d_->format == Format::MarkdownLive))
+                    {
+                        self->d_->ready = true;
+                        emit self->documentOpened(self->d_->path);
+                        emit self->previewReadyChanged(true);
+                    }
                     if (!ready)
                     {
                         self->d_->ready = false;
@@ -749,6 +803,12 @@ void CefDocumentPreviewWidget::openBrowser()
                     emit self->scrollPositionChanged(page, fraction, progress);
                 },
                 Qt::QueuedConnection);
+        },
+        [self, generation](const QJsonObject &message) {
+            QMetaObject::invokeMethod(qApp, [self, generation, message] {
+                if (self && self->d_->generation == generation)
+                    emit self->markdownMessage(message);
+            }, Qt::QueuedConnection);
         });
     const auto client = d_->client;
     const auto parent = static_cast<CefWindowHandle>(window()->winId());
@@ -757,6 +817,26 @@ void CefDocumentPreviewWidget::openBrowser()
 #else
     d_->status->setText(
         QStringLiteral("当前桌面构建尚未配置 CEF，%1 预览在鸿蒙工作区启用").arg(d_->label));
+#endif
+}
+
+void CefDocumentPreviewWidget::sendMarkdownMessage(const QJsonObject &message)
+{
+    if (message.value("type").toString() == QStringLiteral("location"))
+    {
+        if (d_->format != Format::MarkdownEditor && d_->format != Format::MarkdownLive)
+            return;
+        const QFileInfo file(message.value("path").toString());
+        if (!file.isFile() || file.isSymLink() || file.canonicalFilePath() != file.absoluteFilePath())
+            return;
+        d_->path = file.absoluteFilePath();
+    }
+#ifdef Q_OS_OPENHARMONY
+    const auto client = d_->client;
+    if (client)
+        postCef([client, message] { client->sendMarkdown(message); });
+#else
+    Q_UNUSED(message);
 #endif
 }
 
@@ -861,11 +941,23 @@ void CefDocumentPreviewWidget::showEvent(QShowEvent *event)
     window()->installEventFilter(this);
     openBrowser();
     syncGeometry();
+    if (d_->ready && (d_->format == Format::MarkdownEditor || d_->format == Format::MarkdownLive))
+        emit previewReadyChanged(true);
 }
 
 void CefDocumentPreviewWidget::hideEvent(QHideEvent *event)
 {
-    closeBrowser();
+    if (d_->format == Format::MarkdownEditor || d_->format == Format::MarkdownLive)
+    {
+        // Temporary hiding must not destroy unsaved editor state.
+        d_->timer->stop();
+#ifdef Q_OS_OPENHARMONY
+        if (d_->client)
+            d_->client->geometry(browserRect(), false);
+#endif
+    }
+    else
+        closeBrowser();
     QWidget::hideEvent(event);
 }
 

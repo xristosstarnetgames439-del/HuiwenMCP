@@ -245,6 +245,9 @@ struct HomePage {
         },
         onPreviewRequested: (kind: DocumentKind) => {
           this.openWorkspace('', DocumentMode.Preview, kind);
+        },
+        onEditRequested: () => {
+          this.openWorkspace('', DocumentMode.Edit, DocumentKind.Markdown);
         }
       })
     }

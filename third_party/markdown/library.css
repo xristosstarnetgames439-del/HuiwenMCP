@@ -7,6 +7,13 @@
   overflow: auto;
 }
 
+.markdown-editor { height: 100vh; overflow: hidden; }
+.markdown-editor .cm-editor { font: 15px/1.7 monospace; background: #f5f7fb; }
+.markdown-editor .cm-content { padding: 24px 16px 112px; }
+.markdown-editor .cm-gutters { background: #e8edf5; border: 0; color: #8793a5; }
+.markdown-editor .cm-focused { outline: none; }
+.md-source-block { display: flow-root; }
+
 html { background: #f5f7fb; color: #223047; }
 body { margin: 0; font: 16px/1.75 system-ui, "Noto Sans CJK SC", sans-serif; }
 .markdown-body { padding: 24px 28px 112px; overflow-wrap: anywhere; }

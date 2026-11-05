@@ -22,6 +22,7 @@ export struct HomeFormatDialog {
   onCloseRequested: () => void = () => {};
   onConvertRequested: () => void = () => {};
   onPreviewRequested: (kind: DocumentKind) => void = () => {};
+  onEditRequested: () => void = () => {};
 
   @Builder
   formatItem(name: string, icon: Resource, kind: DocumentKind) {
@@ -37,10 +38,12 @@ export struct HomeFormatDialog {
     }
     .padding(12)
     .justifyContent(FlexAlign.Center)
-    // 三种只读预览复用同一个工作区；编辑仍只保留格式展示。
+    // MD 编辑复用现有工作区；其他格式编辑保留后续接入。
     .onClick(() => {
       if (this.feature === HomeFeature.Preview) {
         this.onPreviewRequested(kind);
+      } else if (this.feature === HomeFeature.Edit && kind === DocumentKind.Markdown) {
+        this.onEditRequested();
       }
     })
   }
@@ -58,7 +61,7 @@ export struct HomeFormatDialog {
   @Builder
   formatOptions() {
     if (this.feature === HomeFeature.Preview || this.feature === HomeFeature.Edit) {
-      // 只有 PDF/MD 预览接入跳转；文件在 Qt 工作区内选择。
+      // 文件在 Qt 工作区内选择。
       Row({ space: 12 }) {
         this.formatItem('Word', $r('app.media.home_format_word'), DocumentKind.Word)
         this.formatItem('PDF', $r('app.media.home_format_pdf'), DocumentKind.PDF)

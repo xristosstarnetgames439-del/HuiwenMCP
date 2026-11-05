@@ -498,9 +498,9 @@ DocumentItem SandboxStore::loadTask(const QString &filesDir, const QString &task
     const QString root = rootPath(filesDir);
     const QString task = checkedTask(root, taskPath);
     const QString mode = QDir(root).relativeFilePath(task).section('/', 0, 0);
-    if (task != taskPath || (mode != "preview" && mode != "convert"))
-        fail(QStringLiteral("当前仅支持 PDF/MD/Word 预览和 PDF 转 MD 任务"));
-    // 预览文档直接位于任务目录，转化任务继续使用 input/output；校验不创建目录。
+    if (task != taskPath || (mode != "preview" && mode != "convert" && mode != "edit"))
+        fail(QStringLiteral("当前仅支持 PDF/MD/Word 预览、MD 编辑和 PDF 转 MD 任务"));
+    // 编辑 input 保留原件，output 是持续编辑版本；恢复校验不创建目录。
     const QString inputDir =
         mode == "preview" ? task : validateTaskDirectory(root, task + "/input");
     DocumentItem document;
@@ -509,14 +509,15 @@ DocumentItem SandboxStore::loadTask(const QString &filesDir, const QString &task
     {
         const QString kind = kindOf(input.fileName());
         const bool supportedPreview = mode == "preview" && (kind == "md" || kind == "word");
-        if (kind != "pdf" && !supportedPreview)
+        const bool supportedEdit = mode == "edit" && kind == "md";
+        if ((mode == "edit" && !supportedEdit) || (kind != "pdf" && !supportedPreview && !supportedEdit))
             continue;
         // 恢复前校验运行在 NAPI 工作线程；QFile 是 QObject，会提前占用 Qt 主线程标识。
         const QByteArray path = input.absoluteFilePath().toUtf8();
         std::ifstream file(std::filesystem::u8path(path.constData()), std::ios::binary);
         char firstByte = 0;
-        if (!document.inputPath.isEmpty() || !input.isReadable() || input.size() <= 0 ||
-            input.canonicalFilePath() != input.absoluteFilePath() || !file.get(firstByte))
+        if (!document.inputPath.isEmpty() || !input.isReadable() || (!supportedEdit && input.size() <= 0) ||
+            input.canonicalFilePath() != input.absoluteFilePath() || (!supportedEdit && !file.get(firstByte)))
             fail(QStringLiteral("任务输入不唯一、已失效或无法读取"));
         document.kind = kind;
         document.name = input.fileName();
@@ -524,19 +525,29 @@ DocumentItem SandboxStore::loadTask(const QString &filesDir, const QString &task
     }
     if (document.inputPath.isEmpty())
         fail(QStringLiteral("原任务的文档已被删除或无法读取"));
-    if (mode == "convert")
+    document.openPath = document.inputPath;
+    if (mode == "convert" || mode == "edit")
     {
         const QString outputDir = validateTaskDirectory(root, task + "/output");
-        document.outputPath = outputDir + "/" + QFileInfo(document.name).completeBaseName() + ".md";
+        document.outputPath = outputDir + "/" +
+            (mode == "edit" ? document.name : QFileInfo(document.name).completeBaseName() + ".md");
         const QFileInfo output(document.outputPath);
         if (output.isSymLink() ||
             (output.exists() && (!output.isFile() || !output.isReadable() ||
                                  output.canonicalFilePath() != document.outputPath)))
             fail(QStringLiteral("原任务的 Markdown 路径已失效"));
+        if (mode == "edit" && output.exists())
+        {
+            const QByteArray path = document.outputPath.toUtf8();
+            std::ifstream version(std::filesystem::u8path(path.constData()), std::ios::binary);
+            if (!version.is_open())
+                fail(QStringLiteral("已编辑的 Markdown 无法读取，未退回 input 原件"));
+            // An empty output is a valid saved edit, not a missing result.
+            document.openPath = document.outputPath;
+        }
     }
     document.taskPath = task;
     document.mode = mode;
-    document.openPath = document.inputPath;
     document.lastUsedAt = QFileInfo(task).lastModified().toMSecsSinceEpoch();
     return document;
 }

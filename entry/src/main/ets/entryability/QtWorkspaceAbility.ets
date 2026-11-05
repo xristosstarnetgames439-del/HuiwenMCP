@@ -36,6 +36,7 @@ export default class QtWorkspaceAbility extends UIAbility {
   private workspaceReady: boolean = false;
   private pendingTask: string = '';
   private mode: string = DocumentMode.Convert;
+  private closeChecking: boolean = false;
   private kind: string = DocumentKind.PDF;
   private restoring: boolean = false;
   private destroyed: boolean = false;
@@ -50,6 +51,9 @@ export default class QtWorkspaceAbility extends UIAbility {
     }
     if (error !== '') {
       this.closing = false;
+      if (this.mode === DocumentMode.Edit) {
+        nativeBridge.workspaceReply(JSON.stringify({ action: 'closeAborted' }));
+      }
       hilog.error(0xFF00, 'QtWorkspace', 'HUIWEN_HOME_FAILED: %{public}s', error);
       return;
     }
@@ -146,6 +150,15 @@ export default class QtWorkspaceAbility extends UIAbility {
       await this.returnHome();
       return;
     }
+    if (event.action === 'closeApproved') {
+      this.closeChecking = false;
+      await this.returnHome(true);
+      return;
+    }
+    if (event.action === 'closeCancelled') {
+      this.closeChecking = false;
+      return;
+    }
     if (event.action === 'closed' && this.closing) {
       if (this.exitOnClose) {
         // 用户选择退出应用：CEF 已释放，结束本应用进程及任务栈，避免常驻 Qt 循环残留。
@@ -195,7 +208,8 @@ export default class QtWorkspaceAbility extends UIAbility {
         }
         const kind = this.kind === DocumentKind.Word ? DocumentKind.Word :
           this.kind === DocumentKind.Markdown ? DocumentKind.Markdown : DocumentKind.PDF;
-        const mode = this.mode === DocumentMode.Preview ? DocumentMode.Preview : DocumentMode.Convert;
+        const mode = this.mode === DocumentMode.Preview ? DocumentMode.Preview :
+          this.mode === DocumentMode.Edit ? DocumentMode.Edit : DocumentMode.Convert;
         const document = await pickDocumentToSandbox(this.context, kind, mode);
         if (document !== null) {
           reply.name = document.name;
@@ -229,8 +243,16 @@ export default class QtWorkspaceAbility extends UIAbility {
     }
   }
 
-  private async returnHome(): Promise<void> {
+  private async returnHome(approved: boolean = false): Promise<void> {
     if (this.closing || this.destroyed) {
+      return;
+    }
+    if (this.mode === DocumentMode.Edit && !approved) {
+      if (this.closeChecking) {
+        return;
+      }
+      this.closeChecking = true;
+      nativeBridge.workspaceReply(JSON.stringify({ action: 'confirmClose' }));
       return;
     }
     this.closing = true;

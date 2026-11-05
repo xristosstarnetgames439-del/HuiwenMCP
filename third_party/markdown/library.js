@@ -1,6 +1,9 @@
 // 编辑能力保持独立；只读预览在内存中渲染 MD 原文，不另存每篇文档的 HTML。
 import './library.css';
 import { createMarkdownRenderer, renderDiagrams } from './source/rich-markdown.ts';
+import { showWorkspace as setupWorkspace } from './workspace.js';
+export { receiveWorkspace } from './workspace.js';
+export function showWorkspace(source) { setupWorkspace(source, showBrokenImage, copyCode); }
 
 export { EditorState } from '@codemirror/state';
 export { EditorView } from '@codemirror/view';
@@ -117,6 +120,7 @@ function restorePosition() {
 }
 
 function showBrokenImage(image) {
+  if (image instanceof Event) image = image.target;
   if (!(image instanceof HTMLImageElement) || !image.isConnected) return;
   const placeholder = document.createElement('span');
   placeholder.className = 'md-image-error';
@@ -133,6 +137,25 @@ function showBrokenImage(image) {
     'fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
   placeholder.append(document.createTextNode(label));
   image.replaceWith(placeholder);
+}
+
+async function copyCode(event) {
+  const button = event.target.closest?.('.md-copy-code');
+  if (!button) return;
+  const text = button.closest('.md-code-block')?.querySelector('code')?.textContent;
+  if (text === undefined) return;
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+    else {
+      const field = document.createElement('textarea');
+      field.value = text;
+      field.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+      document.body.append(field);
+      try { field.select(); if (!document.execCommand('copy')) throw new Error('copy'); }
+      finally { field.remove(); }
+    }
+    button.textContent = '已复制';
+  } catch { button.textContent = '请选中代码复制'; }
 }
 
 export function showPreview(source) {
@@ -153,24 +176,7 @@ export function showPreview(source) {
   if (!listening) {
     window.addEventListener('scroll', queuePosition, { passive: true });
     window.addEventListener('resize', restorePosition);
-    body.addEventListener('click', async event => {
-      const button = event.target.closest?.('.md-copy-code');
-      if (!button) return;
-      const text = button.closest('.md-code-block')?.querySelector('code')?.textContent;
-      if (text === undefined) return;
-      try {
-        if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
-        else {
-          const field = document.createElement('textarea');
-          field.value = text;
-          field.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
-          document.body.append(field);
-          try { field.select(); if (!document.execCommand('copy')) throw new Error('copy'); }
-          finally { field.remove(); }
-        }
-        button.textContent = '已复制';
-      } catch { button.textContent = '请选中代码复制'; }
-    });
+    body.addEventListener('click', copyCode);
     listening = true;
   }
   if (typeof ResizeObserver !== 'undefined') {

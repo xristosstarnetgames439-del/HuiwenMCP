@@ -11,6 +11,12 @@
 #include "sandbox/SandboxService.h"
 #include "services/ConversionService.h"
 #include <QCloseEvent>
+#include <QAction>
+#include <QMessageBox>
+#include <QSaveFile>
+#include <QDir>
+#include <QPointer>
+#include <QJsonDocument>
 #ifdef Q_OS_OPENHARMONY
 #include "platform/harmony/qt_bridge.h"
 #endif
@@ -22,12 +28,17 @@
 #include <QSplitterHandle>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <cmath>
 
 ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWidget *parent)
     : QWidget(parent), mode_(mode), kind_(kind), splitter_(new WorkspaceSplitter(this)),
       source_(
           kind == "word" ? new DocumentView(new WordPreviewWidget,
                                             QStringLiteral("请选择 Word（DOC / DOCX）"), true)
+          : kind == "md" && mode == "edit"
+              ? new DocumentView(editor_ = new CefDocumentPreviewWidget(
+                                     CefDocumentPreviewWidget::Format::MarkdownEditor),
+                                 QStringLiteral("请选择 Markdown"), true)
           : kind == "md"
               ? new DocumentView(new MarkdownPreviewWidget, QStringLiteral("请选择 Markdown"), true)
               : new DocumentView(new PdfPreviewWidget, QStringLiteral("请选择 PDF"), true)),
@@ -35,6 +46,10 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
       status_(new QLabel(this))
 {
     const bool conversion = mode_ == "convert";
+    if (editor_)
+        result_ = new DocumentView(livePreview_ = new CefDocumentPreviewWidget(
+                                       CefDocumentPreviewWidget::Format::MarkdownLive),
+                                   QStringLiteral("编辑后实时预览"), false);
     // 单栏只创建实际需要的一个渲染器；保留现有工作区及分栏容器，不另建预览窗口。
     if (conversion)
     {
@@ -44,7 +59,8 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
     }
     else if (kind_ == "word")
         conversion_ = new ConversionService(this);
-    setWindowTitle(conversion ? QStringLiteral("汇文MCP · 转换工作区")
+    setWindowTitle(editor_ ? QStringLiteral("汇文MCP · Markdown 编辑")
+                   : conversion ? QStringLiteral("汇文MCP · 转换工作区")
                               : QStringLiteral("汇文MCP · %1 预览")
                                     .arg(kind_ == "word" ? "Word"
                                          : kind_ == "md" ? "Markdown"
@@ -85,6 +101,7 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
         splitter_->raiseAbovePreview();
         refreshScrollSync();
         placeConvertButton();
+        updateEditState();
     };
     connect(source_, &DocumentView::previewReadyChanged, this, refreshPreview);
     connect(source_, &DocumentView::cardActivated, this, &ConversionWindow::selectDocument);
@@ -106,8 +123,12 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
     connect(functionBar_->fileMenu(), &FileMenu::directoryRequested, this,
             [this](bool output) { sandbox_->openTaskDirectory(document_, output); });
     connect(sandbox_, &SandboxService::documentSelected, this, &ConversionWindow::showDocument);
-    connect(sandbox_, &SandboxService::restorationRequested, this,
-            &ConversionWindow::restoreDocument);
+    connect(sandbox_, &SandboxService::restorationRequested, this, [this](const DocumentItem &document) {
+        checkUnsaved([this, document](bool ok) {
+            if (ok) restoreDocument(document);
+            else sandbox_->finishRestoration(document, QStringLiteral("未替换当前编辑文档"));
+        });
+    });
     connect(sandbox_, &SandboxService::selectionFinished, this, [this] {
         picking_ = false;
         if (status_->text() == QStringLiteral("正在选择文件…"))
@@ -115,7 +136,7 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
         refreshBusyState();
     });
     connect(sandbox_, &SandboxService::failed, status_, &QLabel::setText);
-    if (result_)
+    if (result_ && !editor_)
     {
         connect(result_, &DocumentView::previewReadyChanged, this, refreshPreview);
         connect(source_, &DocumentView::scrollPositionChanged, this,
@@ -163,6 +184,31 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
                     refreshBusyState();
                 });
     }
+    if (editor_)
+    {
+#ifdef Q_OS_OPENHARMONY
+        connect(&QtBridge::instance(), &QtBridge::replyReceived, this, [this](const QString &json) {
+            if (QJsonDocument::fromJson(json.toUtf8()).object().value("action").toString() == "closeAborted")
+            {
+                closeApproved_ = false;
+                editor_->sendMarkdownMessage({{"type", "unlock"}});
+            }
+        });
+#endif
+        saveAction_ = functionBar_->addAction(QStringLiteral("保存"));
+        connect(saveAction_, &QAction::triggered, this, [this] {
+            requestEditSnapshot([this](bool ok) { if (ok) saveEdit(); });
+        });
+        connect(editor_, &CefDocumentPreviewWidget::markdownMessage, this,
+                [this](const QJsonObject &message) { handleMarkdown(message, true); });
+        connect(livePreview_, &CefDocumentPreviewWidget::markdownMessage, this,
+                [this](const QJsonObject &message) { handleMarkdown(message, false); });
+        connect(result_, &DocumentView::previewReadyChanged, this, refreshPreview);
+        connect(livePreview_, &CefDocumentPreviewWidget::documentOpened, this, [this] {
+            livePreview_->sendMarkdownMessage({{"type", "content"}, {"text", editText_},
+                                              {"revision", editRevision_}});
+        });
+    }
     if (!result_ && kind_ == "word")
     {
         connect(conversion_, &ConversionService::succeeded, this,
@@ -203,7 +249,13 @@ void ConversionWindow::closeEvent(QCloseEvent *event)
     event->ignore();
     QtBridge::instance().request("close");
 #else
-    QWidget::closeEvent(event);
+    if (closeApproved_ || !editor_)
+        QWidget::closeEvent(event);
+    else
+    {
+        event->ignore();
+        requestClosePermission([this](bool ok) { if (ok) close(); });
+    }
 #endif
 }
 
@@ -243,12 +295,24 @@ void ConversionWindow::refreshBusyState()
         button_->setVisible(!result_->hasDocument());
     }
     placeConvertButton();
+    updateEditState();
 }
 
 void ConversionWindow::selectDocument()
 {
     if (picking_ || converting_)
         return;
+    if (editor_)
+    {
+        checkUnsaved([this](bool ok) {
+            if (!ok) return;
+            picking_ = true;
+            status_->setText(QStringLiteral("正在选择文件…"));
+            refreshBusyState();
+            sandbox_->selectDocument(kind_, mode_);
+        });
+        return;
+    }
     picking_ = true;
     status_->setText(QStringLiteral("正在选择文件…"));
     refreshBusyState();
@@ -271,10 +335,28 @@ void ConversionWindow::showDocument(const DocumentItem &document)
         conversion_->convertDocToDocx(document.inputPath);
         return;
     }
-    source_->setDocument(document.inputPath, document.kind, document.name);
+    const QString workingPath = editor_ && !document.openPath.isEmpty()
+                                    ? document.openPath : document.inputPath;
+    source_->setDocument(workingPath, document.kind, document.name);
     if (document.kind == "word")
         conversion_->releaseDocPreview();
-    if (result_)
+    if (editor_)
+    {
+        QFile input(workingPath);
+        if (!input.open(QIODevice::ReadOnly) || input.size() > 16 * 1024 * 1024)
+        {
+            status_->setText(QStringLiteral("无法读取 Markdown，或文件超过 16 MiB"));
+            return;
+        }
+        editText_ = savedText_ = QString::fromUtf8(input.readAll())
+                                    .replace("\r\n", "\n").replace('\r', '\n');
+        editRevision_ = 0;
+        editDirty_ = false;
+        document_.openPath = workingPath;
+        result_->setDocument(workingPath, QStringLiteral("md"), document.name);
+        updateEditState();
+    }
+    else if (result_)
     {
         const QFileInfo output(document.outputPath);
         result_->setDocument(output.isFile() && output.size() > 0 ? document.outputPath : QString(),
@@ -295,9 +377,9 @@ void ConversionWindow::restoreDocument(const DocumentItem &document)
         sandbox_->finishRestoration(document, QStringLiteral("任务类型与当前工作区不一致"));
         return;
     }
-    // 在替换当前工作区前再次确认输入可读，避免列表展示后文件被删除。
-    QFile input(document.inputPath);
-    if (!input.open(QIODevice::ReadOnly) || input.read(1).isEmpty())
+    // 编辑任务复核当前版本，避免已有 output 失效时悄悄打开 input 原件。
+    QFile input(editor_ && !document.openPath.isEmpty() ? document.openPath : document.inputPath);
+    if (!input.open(QIODevice::ReadOnly) || (!editor_ && input.read(1).isEmpty()))
     {
         sandbox_->finishRestoration(document, QStringLiteral("原任务的文档已无法读取"));
         return;
@@ -316,7 +398,178 @@ void ConversionWindow::restoreDocument(const DocumentItem &document)
 void ConversionWindow::refreshScrollSync()
 {
     if (scrollSyncEnabled())
-        source_->publishScrollPosition();
+    {
+        if (editor_) editor_->sendMarkdownMessage({{"type", "publish"}});
+        else source_->publishScrollPosition();
+    }
+}
+
+void ConversionWindow::updateEditState()
+{
+    if (!editor_) return;
+    setWindowTitle(QStringLiteral("汇文MCP · Markdown 编辑%1").arg(editDirty_ ? " *" : ""));
+    if (saveAction_)
+        saveAction_->setEnabled(!document_.inputPath.isEmpty() && editor_->isPreviewReady() &&
+                                !picking_ && !pendingSnapshot_);
+}
+
+bool ConversionWindow::saveEdit()
+{
+    const QByteArray bytes = editText_.toUtf8();
+    if (document_.inputPath.isEmpty() || bytes.size() > 16 * 1024 * 1024)
+    {
+        status_->setText(QStringLiteral("无法保存：文档未打开或内容超过 16 MiB"));
+        return false;
+    }
+    const QFileInfo output(document_.outputPath);
+    const QString expected = QDir(document_.taskPath).filePath(
+        QStringLiteral("output/") + QFileInfo(document_.inputPath).fileName());
+    if (document_.outputPath != expected || output.isSymLink() ||
+        QFileInfo(output.absolutePath()).canonicalFilePath() != output.absolutePath() ||
+        (output.exists() && (!output.isFile() || !output.isReadable() ||
+                             output.canonicalFilePath() != document_.outputPath)))
+    {
+        status_->setText(QStringLiteral("无法保存：编辑输出路径已失效"));
+        return false;
+    }
+    if (!editDirty_ && document_.openPath != document_.outputPath)
+    {
+        status_->setText(QStringLiteral("内容未修改，input 原件保持不变"));
+        return true;
+    }
+    QSaveFile file(document_.outputPath);
+    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
+    {
+        status_->setText(QStringLiteral("保存失败：") + file.errorString());
+        return false;
+    }
+    savedText_ = editText_;
+    editDirty_ = false;
+    document_.openPath = document_.outputPath;
+    // Rebind resource paths without rebuilding the editors or losing their undo history.
+    const QJsonObject location{{"type", "location"}, {"path", document_.openPath}};
+    editor_->sendMarkdownMessage(location);
+    livePreview_->sendMarkdownMessage(location);
+    sandbox_->markUsed(document_);
+    status_->setText(QStringLiteral("已保存到 output，后续继续编辑此版本"));
+    updateEditState();
+    return true;
+}
+
+void ConversionWindow::requestEditSnapshot(std::function<void(bool)> completed)
+{
+    if (!editor_ || document_.inputPath.isEmpty()) { completed(true); return; }
+    if (pendingSnapshot_ || !editor_->isPreviewReady())
+    {
+        status_->setText(QStringLiteral("编辑器尚未就绪，无法获取最新内容"));
+        completed(false);
+        return;
+    }
+    pendingSnapshot_ = std::move(completed);
+    const int request = ++snapshotRequest_;
+    editor_->sendMarkdownMessage({{"type", "snapshot"}, {"request", request}});
+    updateEditState();
+    QTimer::singleShot(5000, this, [this, request] {
+        if (pendingSnapshot_ && request == snapshotRequest_)
+        {
+            status_->setText(QStringLiteral("读取编辑内容超时，未写入 output"));
+            finishSnapshot(false);
+        }
+    });
+}
+
+void ConversionWindow::finishSnapshot(bool ok)
+{
+    if (!pendingSnapshot_) return;
+    auto done = std::move(pendingSnapshot_);
+    pendingSnapshot_ = {};
+    done(ok);
+    if (!closeApproved_) editor_->sendMarkdownMessage({{"type", "unlock"}});
+    updateEditState();
+}
+
+void ConversionWindow::checkUnsaved(std::function<void(bool)> completed)
+{
+    if (pendingSnapshot_) { completed(false); return; }
+    if (editor_ && !editor_->isPreviewReady() && !editDirty_)
+    {
+        completed(true);
+        return;
+    }
+    requestEditSnapshot([this, completed](bool ok) {
+        if (ok && !editDirty_) { completed(true); return; }
+        // Native CEF nodes sit above QWidget painting; hide them while the Qt dialog is open.
+        editor_->hide();
+        livePreview_->hide();
+        const auto choice = QMessageBox::warning(this, QStringLiteral("未保存的修改"),
+            ok ? QStringLiteral("保存当前 Markdown 的修改吗？")
+               : QStringLiteral("无法获取最新编辑内容，不会保存旧缓存。放弃所有未保存修改并继续吗？"),
+            (ok ? QMessageBox::Save : QMessageBox::NoButton) | QMessageBox::Discard | QMessageBox::Cancel,
+            ok ? QMessageBox::Save : QMessageBox::Cancel);
+        editor_->show();
+        livePreview_->show();
+        completed(choice == QMessageBox::Discard || (choice == QMessageBox::Save && saveEdit()));
+    });
+}
+
+void ConversionWindow::requestClosePermission(std::function<void(bool)> completed)
+{
+    if (!editor_ || closeApproved_) { completed(true); return; }
+    checkUnsaved([this, completed](bool ok) {
+        if (ok) closeApproved_ = true;
+        completed(ok);
+    });
+}
+
+void ConversionWindow::handleMarkdown(const QJsonObject &message, bool fromEditor)
+{
+    const QString type = message.value("type").toString();
+    const double revision = message.value("revision").toDouble(-1);
+    if (!std::isfinite(revision) || revision < 0 || revision > 2147483647 ||
+        std::floor(revision) != revision) return;
+    if (type == "position")
+    {
+        const double line = message.value("line").toDouble(-1);
+        const double fraction = message.value("fraction").toDouble(-1);
+        const double progress = message.value("progress").toDouble(-1);
+        if (scrollSyncEnabled() && revision == editRevision_ &&
+            std::isfinite(line) && line >= 1 && line <= 16777217 && std::floor(line) == line &&
+            std::isfinite(fraction) && fraction >= 0 && fraction <= 1 &&
+            std::isfinite(progress) && progress >= 0 && progress <= 1)
+            (fromEditor ? livePreview_ : editor_)->sendMarkdownMessage(message);
+        return;
+    }
+    if (type == "saveRequest" && !fromEditor)
+    {
+        requestEditSnapshot([this](bool ok) { if (ok) saveEdit(); });
+        return;
+    }
+    if (!fromEditor || revision < editRevision_) return;
+    if (type == "dirty")
+    {
+        // This revision still has no complete text; never label the old cache with it.
+        editDirty_ = true;
+        updateEditState();
+        return;
+    }
+    const bool snapshot = message.value("request").toInt(-1) == snapshotRequest_ && pendingSnapshot_;
+    if (type == "tooLarge")
+    {
+        status_->setText(QStringLiteral("内容超过 16 MiB，未保存或更新预览；可缩减内容或放弃修改退出"));
+        if (snapshot) finishSnapshot(false);
+        return;
+    }
+    if (type != "change" && type != "save" && type != "snapshot") return;
+    if (!message.value("text").isString()) return;
+    const QString text = message.value("text").toString();
+    if (text.toUtf8().size() > 16 * 1024 * 1024) { if (snapshot) finishSnapshot(false); return; }
+    editText_ = text;
+    editRevision_ = static_cast<int>(revision);
+    editDirty_ = editText_ != savedText_;
+    livePreview_->sendMarkdownMessage({{"type", "content"}, {"text", text}, {"revision", editRevision_}});
+    if (type == "save") saveEdit();
+    if (type == "snapshot" && snapshot) finishSnapshot(true);
+    updateEditState();
 }
 
 bool ConversionWindow::scrollSyncEnabled() const

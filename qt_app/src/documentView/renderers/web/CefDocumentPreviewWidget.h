@@ -2,6 +2,7 @@
 #pragma once
 #include "documentView/DocumentRenderer.h"
 #include <QWidget>
+#include <QJsonObject>
 #include <functional>
 #include <memory>
 
@@ -12,7 +13,9 @@ class CefDocumentPreviewWidget : public QWidget, public DocumentRenderer
     enum class Format
     {
         Markdown,
-        Word
+        Word,
+        MarkdownEditor,
+        MarkdownLive
     };
     explicit CefDocumentPreviewWidget(Format format, QWidget *parent = nullptr);
     ~CefDocumentPreviewWidget() override;
@@ -22,6 +25,7 @@ class CefDocumentPreviewWidget : public QWidget, public DocumentRenderer
     void publishScrollPosition() override;
     DocumentScrollOwner scrollOwner() const override { return DocumentScrollOwner::Backend; }
     void setViewOptions(const DocumentViewOptions &options) override;
+    void sendMarkdownMessage(const QJsonObject &message);
     // 单工作区关闭时等待全部浏览器退出；不停止进程级 CEF 引擎。
     static void closeWorkspaceBrowsers(std::function<void()> completed);
 
@@ -29,6 +33,7 @@ class CefDocumentPreviewWidget : public QWidget, public DocumentRenderer
     void documentOpened(const QString &path);
     void previewReadyChanged(bool ready);
     void scrollPositionChanged(int page, double fraction, double progress);
+    void markdownMessage(const QJsonObject &message);
 
   protected:
     void showEvent(QShowEvent *event) override;

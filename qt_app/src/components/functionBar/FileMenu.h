@@ -18,6 +18,7 @@ class FileMenu : public SelectionMenu
 
   private:
     bool conversion_;
+    bool editing_;
     QAction *placeholderAction_;
     QAction *previewAction_;
     QAction *inputDirectoryAction_;

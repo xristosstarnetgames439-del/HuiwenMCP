@@ -25,7 +25,7 @@ function run() {
 try {
   const source = path.join(sandbox, 'third_party/markdown');
   mkdirSync(source, { recursive: true });
-  for (const name of ['package.json', 'package-lock.json', 'library.js', 'library.css', 'preview.html']) {
+  for (const name of ['package.json', 'package-lock.json', 'library.js', 'workspace.js', 'library.css', 'preview.html']) {
     cpSync(path.join(root, 'third_party/markdown', name), path.join(source, name), { recursive: true });
   }
   const core = path.join(root, 'third_party/markdown/source');

@@ -18,6 +18,7 @@ class QtBridge : public QObject
   signals:
     void workspaceChanged();
     void closeRequested();
+    void closeApprovalRequested();
     void replyReceived(const QString &json);
 };
 

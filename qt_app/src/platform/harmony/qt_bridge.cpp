@@ -73,10 +73,11 @@ napi_value Register(napi_env env, napi_callback_info info)
     // 目录仅供截图使用；文档预览与转换的注册协议保持不变。
     const QString cacheRoot = count >= 4 ? ReadOption(env, arguments[3], 4096) : QString();
     if (!((mode == "preview" && (kind == "pdf" || kind == "md" || kind == "word")) ||
+          (mode == "edit" && kind == "md") ||
           (mode == "convert" && kind == "pdf") ||
           (mode == "screenshot" && kind.isEmpty() && cacheRoot.startsWith('/'))))
     {
-        napi_throw_type_error(env, nullptr, "Qt 会话仅支持文档预览、PDF 转 MD 和截图");
+        napi_throw_type_error(env, nullptr, "Qt 会话仅支持文档预览、MD 编辑、PDF 转 MD 和截图");
         return nullptr;
     }
     Clear(env, info);
@@ -123,7 +124,9 @@ napi_value Reply(napi_env env, napi_callback_info info)
                     return;
                 auto &bridge = QtBridge::instance();
                 // ArkTS 首页就绪后发 close；文件业务仍走原有回包通道。
-                if (QJsonDocument::fromJson(json).object().value("action").toString() == "close")
+                if (QJsonDocument::fromJson(json).object().value("action").toString() == "confirmClose")
+                    emit bridge.closeApprovalRequested();
+                else if (QJsonDocument::fromJson(json).object().value("action").toString() == "close")
                     emit bridge.closeRequested();
                 else
                     emit bridge.replyReceived(QString::fromUtf8(json));

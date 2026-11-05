@@ -13,7 +13,12 @@
   <script>
     window.HuiwenPreview = {
       ...window.HuiwenMarkdown,
+      receive: window.HuiwenMarkdown.receiveWorkspace,
       showPreview(source) {
+        if (location.pathname === '/editor.html' || location.pathname === '/live.html') {
+          window.HuiwenMarkdown.showWorkspace(source);
+          return;
+        }
         window.HuiwenMarkdown.showPreview(source);
         window.huiwenReportPreview?.(true, '');
       }
