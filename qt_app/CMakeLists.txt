@@ -27,6 +27,14 @@ set(workspace_sources
     src/components/functionBar/FunctionBar.cpp
     src/components/functionBar/FileMenu.cpp
     src/components/functionBar/SelectionMenu.cpp
+    # 助手首版只使用 Qt 界面和本地记录，不链接模型 SDK 或网络模块。
+    src/sidebars/agent/AgentSidebar.cpp
+    src/sidebars/agent/AgentStore.cpp
+    src/sidebars/agent/components/AgentToolbar.cpp
+    src/sidebars/agent/components/AgentMessageView.cpp
+    src/sidebars/agent/components/AgentComposer.cpp
+    src/sidebars/agent/dialogs/AgentSettingsDialog.cpp
+    src/sidebars/agent/dialogs/AgentHistoryPopup.cpp
     src/services/ConversionService.cpp
     src/sandbox/SandboxService.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "OHOS")

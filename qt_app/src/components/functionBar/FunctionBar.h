@@ -3,6 +3,7 @@
 #include <QToolBar>
 class FileMenu;
 class QAction;
+class QToolButton;
 
 class FunctionBar : public QToolBar
 {
@@ -11,11 +12,16 @@ class FunctionBar : public QToolBar
     explicit FunctionBar(const QString &mode, QWidget *parent = nullptr);
     FileMenu *fileMenu() const;
     bool isScrollSynchronized() const;
+    QAction *addCommand(const QString &text);
+    void setAgentSidebarVisible(bool visible);
 
   signals:
     void scrollSyncChanged(bool synchronized);
+    void agentSidebarToggled(bool visible);
 
   private:
     FileMenu *fileMenu_;
     QAction *synchronizedAction_ = nullptr;
+    QAction *trailingSpacer_ = nullptr;
+    QToolButton *agentToggle_ = nullptr;
 };

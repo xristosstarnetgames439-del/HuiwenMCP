@@ -13,6 +13,7 @@ class WorkspaceSplitter;
 class QLabel;
 class QAction;
 class CefDocumentPreviewWidget;
+class AgentSidebar;
 
 class ConversionWindow : public QWidget
 {
@@ -45,6 +46,9 @@ class ConversionWindow : public QWidget
     CefDocumentPreviewWidget *editor_ = nullptr;
     CefDocumentPreviewWidget *livePreview_ = nullptr;
     WorkspaceSplitter *splitter_;
+    WorkspaceSplitter *bodySplitter_;
+    AgentSidebar *agentSidebar_;
+    int agentSidebarWidth_ = 500;
     DocumentView *source_;
     DocumentView *result_ = nullptr;
     ConvertButton *button_ = nullptr;

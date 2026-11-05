@@ -2,6 +2,7 @@
 #include "FunctionBar.h"
 #include "FileMenu.h"
 #include "SelectionMenu.h"
+#include "sidebars/agent/components/AgentIcons.h"
 #include <QAction>
 #include <QActionGroup>
 #include <QFontMetrics>
@@ -27,6 +28,10 @@ FunctionBar::FunctionBar(const QString &mode, QWidget *parent)
         "margin: 0; padding: 0 20px; color: #34445C; font-size: 28px; font-weight: normal; }"
         "QToolBar#workspaceFunctionBar QToolButton[selected=\"true\"] "
         "{ background: #DCE1E8; }"
+        "QToolBar#workspaceFunctionBar QToolButton#agentSidebarToggle "
+        "{ padding: 0; border-radius: 8px; }"
+        "QToolBar#workspaceFunctionBar QToolButton#agentSidebarToggle:checked "
+        "{ background: #E5E5E5; }"
         "QToolBar#workspaceFunctionBar QToolButton::menu-indicator "
         "{ image: none; width: 0; height: 0; }"));
     // 同时清除工具条布局的原生默认留白，按钮背景才能覆盖整个高度。
@@ -61,24 +66,57 @@ FunctionBar::FunctionBar(const QString &mode, QWidget *parent)
     };
     addMenuButton(QStringLiteral("文件"), fileMenu_);
     // 单栏没有联动目标，保留同一个功能条，但不创建双栏滚动菜单。
-    if (mode == "preview")
-        return;
-    auto *menu = new SelectionMenu(this);
-    auto *modes = new QActionGroup(menu);
-    modes->setExclusive(true);
-    synchronizedAction_ = menu->addAction(QStringLiteral("同步滚动"));
-    auto *oneWay = menu->addAction(QStringLiteral("单向滚动"));
-    for (auto *action : {synchronizedAction_, oneWay})
+    if (mode != "preview")
     {
-        action->setCheckable(true);
-        modes->addAction(action);
+        auto *menu = new SelectionMenu(this);
+        auto *modes = new QActionGroup(menu);
+        modes->setExclusive(true);
+        synchronizedAction_ = menu->addAction(QStringLiteral("同步滚动"));
+        auto *oneWay = menu->addAction(QStringLiteral("单向滚动"));
+        for (auto *action : {synchronizedAction_, oneWay})
+        {
+            action->setCheckable(true);
+            modes->addAction(action);
+        }
+        synchronizedAction_->setChecked(true);
+        connect(synchronizedAction_, &QAction::toggled, this, &FunctionBar::scrollSyncChanged);
+        addMenuButton(QStringLiteral("滚动设置"), menu);
     }
-    synchronizedAction_->setChecked(true);
-    connect(synchronizedAction_, &QAction::toggled, this, &FunctionBar::scrollSyncChanged);
-    addMenuButton(QStringLiteral("滚动设置"), menu);
+    auto *space = new QWidget(this);
+    space->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    trailingSpacer_ = addWidget(space);
+    agentToggle_ = new QToolButton(this);
+    agentToggle_->setObjectName("agentSidebarToggle");
+    agentToggle_->setIcon(agentIcon(AgentIcon::Sidebar));
+    agentToggle_->setIconSize(QSize(28, 28));
+    agentToggle_->setFixedSize(48, 48);
+    agentToggle_->setCheckable(true);
+    agentToggle_->setCursor(Qt::PointingHandCursor);
+    agentToggle_->setAccessibleName(QStringLiteral("开关文档助手侧栏"));
+    setAgentSidebarVisible(true);
+    connect(agentToggle_, &QToolButton::toggled, this, [this](bool visible) {
+        agentToggle_->setToolTip(visible ? QStringLiteral("收起文档助手")
+                                         : QStringLiteral("展开文档助手"));
+        emit agentSidebarToggled(visible);
+    });
+    addWidget(agentToggle_);
 }
 
 FileMenu *FunctionBar::fileMenu() const { return fileMenu_; }
+
+QAction *FunctionBar::addCommand(const QString &text)
+{
+    auto *action = new QAction(text, this);
+    insertAction(trailingSpacer_, action); // 后加的保存等命令仍放在左侧，折叠按钮始终位于最右侧。
+    return action;
+}
+
+void FunctionBar::setAgentSidebarVisible(bool visible)
+{
+    agentToggle_->setChecked(visible);
+    agentToggle_->setToolTip(visible ? QStringLiteral("收起文档助手")
+                                     : QStringLiteral("展开文档助手"));
+}
 
 bool FunctionBar::isScrollSynchronized() const
 {

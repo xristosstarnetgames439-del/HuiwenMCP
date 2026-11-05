@@ -10,13 +10,14 @@
 #include "documentView/renderers/word/WordPreviewWidget.h"
 #include "sandbox/SandboxService.h"
 #include "services/ConversionService.h"
-#include <QCloseEvent>
+#include "sidebars/agent/AgentSidebar.h"
 #include <QAction>
-#include <QMessageBox>
-#include <QSaveFile>
+#include <QCloseEvent>
 #include <QDir>
-#include <QPointer>
 #include <QJsonDocument>
+#include <QMessageBox>
+#include <QPointer>
+#include <QSaveFile>
 #ifdef Q_OS_OPENHARMONY
 #include "platform/harmony/qt_bridge.h"
 #endif
@@ -28,10 +29,12 @@
 #include <QSplitterHandle>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <cmath>
 
 ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWidget *parent)
     : QWidget(parent), mode_(mode), kind_(kind), splitter_(new WorkspaceSplitter(this)),
+      bodySplitter_(new WorkspaceSplitter(this)), agentSidebar_(new AgentSidebar(this)),
       source_(
           kind == "word" ? new DocumentView(new WordPreviewWidget,
                                             QStringLiteral("请选择 Word（DOC / DOCX）"), true)
@@ -89,7 +92,31 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
     }
     splitter_->installEventFilter(this);
     // 只有一个子控件时 QSplitter 不显示分隔条，文档占满原有内容区。
-    layout->addWidget(splitter_, 1);
+    bodySplitter_->addWidget(splitter_);
+    bodySplitter_->addWidget(agentSidebar_);
+    bodySplitter_->setStretchFactor(0, 1);
+    bodySplitter_->setStretchFactor(1, 0);
+    bodySplitter_->setSizes({820, agentSidebarWidth_});
+    layout->addWidget(bodySplitter_, 1);
+    connect(functionBar_, &FunctionBar::agentSidebarToggled, this, [this](bool visible) {
+        if (!visible && agentSidebar_->width() > 0)
+            agentSidebarWidth_ = agentSidebar_->width();
+        agentSidebar_->setVisible(visible);
+        if (visible)
+        {
+            bodySplitter_->setSizes(
+                {std::max(260, bodySplitter_->width() - agentSidebarWidth_), agentSidebarWidth_});
+            agentSidebar_->setFocus(Qt::OtherFocusReason);
+            agentSidebar_->raiseAbovePreview();
+        }
+        bodySplitter_->raiseAbovePreview();
+        placeConvertButton();
+    });
+    connect(bodySplitter_, &QSplitter::splitterMoved, this, [this] {
+        bodySplitter_->raiseAbovePreview();
+        agentSidebar_->raiseAbovePreview();
+        placeConvertButton();
+    });
     status_->setContentsMargins(16, 4, 16, 4);
     status_->setMinimumHeight(28);
     status_->setWordWrap(true);
@@ -99,6 +126,8 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
     const auto refreshPreview = [this]
     {
         splitter_->raiseAbovePreview();
+        bodySplitter_->raiseAbovePreview();
+        agentSidebar_->raiseAbovePreview();
         refreshScrollSync();
         placeConvertButton();
         updateEditState();
@@ -195,7 +224,7 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
             }
         });
 #endif
-        saveAction_ = functionBar_->addAction(QStringLiteral("保存"));
+        saveAction_ = functionBar_->addCommand(QStringLiteral("保存"));
         connect(saveAction_, &QAction::triggered, this, [this] {
             requestEditSnapshot([this](bool ok) { if (ok) saveEdit(); });
         });
@@ -322,6 +351,7 @@ void ConversionWindow::selectDocument()
 void ConversionWindow::showDocument(const DocumentItem &document)
 {
     document_ = document;
+    agentSidebar_->setDocument(document);
     retry_ = false;
     status_->clear();
     if (document.kind == "word" &&
