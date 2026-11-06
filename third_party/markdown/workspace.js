@@ -45,10 +45,10 @@ function position() {
     progress: top / Math.max(1, range()) };
 }
 
-function scrollToSource(p) {
+function scrollToSource(p, useLine = false) {
   if (p.revision !== revision) return;
   let top = clamp(p.progress) * range();
-  if (p.progress > 0 && p.progress < 1) {
+  if (useLine || (p.progress > 0 && p.progress < 1)) {
     if (editor) {
       const line = editor.state.doc.line(Math.max(1, Math.min(editor.state.doc.lines, p.line)));
       const block = editor.lineBlockAt(line.from);
@@ -119,6 +119,15 @@ function render(source, nextRevision) {
 
 export function receiveWorkspace(message) {
   if (!body) return;
+  if (message.type === 'navigate' && message.revision === revision &&
+      Number.isInteger(message.line) && message.line >= 1) {
+    if (editor) {
+      const line = editor.state.doc.line(Math.min(editor.state.doc.lines, message.line));
+      editor.dispatch({ effects: EditorView.scrollIntoView(line.from, { y: 'start' }) });
+    } else {
+      scrollToSource({ ...message, fraction: 0, progress: 0 }, true);
+    }
+  }
   if (message.type === 'content' && !isEditor() && message.revision >= revision) render(message.text, message.revision);
   if (message.type === 'position') {
     if (message.revision === revision) scrollToSource(message);

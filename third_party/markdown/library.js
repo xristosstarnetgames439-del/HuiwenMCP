@@ -1,8 +1,21 @@
 // 编辑能力保持独立；只读预览在内存中渲染 MD 原文，不另存每篇文档的 HTML。
 import './library.css';
 import { createMarkdownRenderer, renderDiagrams } from './source/rich-markdown.ts';
-import { showWorkspace as setupWorkspace } from './workspace.js';
-export { receiveWorkspace } from './workspace.js';
+import { showWorkspace as setupWorkspace, receiveWorkspace as receiveEditorMessage } from './workspace.js';
+export function receiveWorkspace(message) {
+  if (location.pathname !== '/preview.html') {
+    receiveEditorMessage(message);
+    return;
+  }
+  if (message.type !== 'navigate' || message.revision !== 0 ||
+      !Number.isInteger(message.line) || message.line < 1) return;
+  const heading = document.querySelector(`[data-heading-line="${message.line}"]`);
+  if (!heading) return;
+  heading.scrollIntoView({ block: 'start', behavior: 'instant' });
+  appliedTop = null;
+  lastPosition = scrollPosition();
+  queuePosition();
+}
 export function showWorkspace(source) { setupWorkspace(source, showBrokenImage, copyCode, reportOutline); }
 
 export { EditorState } from '@codemirror/state';
@@ -24,6 +37,10 @@ export function renderPreview(source, onOutline) {
   const environment = imageEnvironment();
   const tokens = renderer.parse(source, environment);
   onOutline?.(collectHeadings(tokens));
+  for (const token of tokens) {
+    if (token.type === 'heading_open' && token.map)
+      token.attrSet('data-heading-line', String(token.map[0] + 1));
+  }
   const markers = [];
   for (let i = 0; i < tokens.length - 2; i++) {
     if (tokens[i].type !== 'paragraph_open' || tokens[i].level !== 0 ||
@@ -32,7 +49,7 @@ export function renderPreview(source, onOutline) {
     if (match && Number(match[1]) <= 100000) markers.push({ index: i, page: Number(match[1]) });
   }
   if (!markers.length || markers.some((marker, i) => i && marker.page <= markers[i - 1].page)) {
-    return renderMarkdown(source);
+    return renderer.renderer.render(tokens, renderer.options, environment);
   }
   const render = (start, end) => renderer.renderer.render(tokens.slice(start, end), renderer.options, environment);
   return render(0, markers[0].index) + markers.map((marker, i) => {

@@ -168,6 +168,17 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
     if (markdownPreview_)
         connect(markdownPreview_, &CefDocumentPreviewWidget::markdownMessage, this,
                 &ConversionWindow::handleOutline);
+    connect(navigationSidebar_, &NavigationSidebar::headingActivated, this, [this](int line) {
+        const QJsonObject message{
+            {"type", "navigate"}, {"line", line}, {"revision", editRevision_}};
+        if (editor_)
+        {
+            editor_->sendMarkdownMessage(message);
+            livePreview_->sendMarkdownMessage(message);
+        }
+        else if (markdownPreview_)
+            markdownPreview_->sendMarkdownMessage(message);
+    });
     if (result_ && !editor_)
     {
         connect(result_, &DocumentView::previewReadyChanged, this, refreshPreview);

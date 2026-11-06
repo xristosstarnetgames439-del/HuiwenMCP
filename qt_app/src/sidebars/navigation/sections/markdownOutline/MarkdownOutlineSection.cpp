@@ -12,6 +12,7 @@ MarkdownOutlineSection::MarkdownOutlineSection(QWidget *parent)
     layout->setContentsMargins(8, 6, 8, 6);
     tree_->setHeaderHidden(true);
     tree_->setColumnCount(1);
+    tree_->setExpandsOnDoubleClick(false); // 标题只负责跳转，左侧分支图标负责折叠。
     tree_->setIndentation(20);
     tree_->setTextElideMode(Qt::ElideRight);
     tree_->setUniformRowHeights(true);
@@ -19,7 +20,7 @@ MarkdownOutlineSection::MarkdownOutlineSection(QWidget *parent)
     hint_->setWordWrap(true);
     layout->addWidget(hint_);
     layout->addWidget(tree_, 1);
-    connect(tree_, &QTreeWidget::itemActivated, this, [this](QTreeWidgetItem *item) {
+    connect(tree_, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item) {
         emit headingActivated(item->data(0, Qt::UserRole).toInt());
     });
     hint_->setText(QStringLiteral("暂无标题"));
