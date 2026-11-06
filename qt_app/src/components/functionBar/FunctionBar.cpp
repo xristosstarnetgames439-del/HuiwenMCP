@@ -2,7 +2,7 @@
 #include "FunctionBar.h"
 #include "FileMenu.h"
 #include "SelectionMenu.h"
-#include "sidebars/agent/components/AgentIcons.h"
+#include "sidebars/common/SidebarIcons.h"
 #include <QAction>
 #include <QActionGroup>
 #include <QFontMetrics>
@@ -28,9 +28,11 @@ FunctionBar::FunctionBar(const QString &mode, QWidget *parent)
         "margin: 0; padding: 0 20px; color: #34445C; font-size: 28px; font-weight: normal; }"
         "QToolBar#workspaceFunctionBar QToolButton[selected=\"true\"] "
         "{ background: #DCE1E8; }"
-        "QToolBar#workspaceFunctionBar QToolButton#agentSidebarToggle "
+        "QToolBar#workspaceFunctionBar QToolButton#agentSidebarToggle, "
+        "QToolBar#workspaceFunctionBar QToolButton#navigationSidebarToggle "
         "{ padding: 0; border-radius: 8px; }"
-        "QToolBar#workspaceFunctionBar QToolButton#agentSidebarToggle:checked "
+        "QToolBar#workspaceFunctionBar QToolButton#agentSidebarToggle:checked, "
+        "QToolBar#workspaceFunctionBar QToolButton#navigationSidebarToggle:checked "
         "{ background: #E5E5E5; }"
         "QToolBar#workspaceFunctionBar QToolButton::menu-indicator "
         "{ image: none; width: 0; height: 0; }"));
@@ -64,6 +66,20 @@ FunctionBar::FunctionBar(const QString &mode, QWidget *parent)
         button->setFixedSize(std::max(button->sizeHint().width(), textWidth + 40), height());
         addWidget(button);
     };
+    navigationToggle_ = new QToolButton(this);
+    navigationToggle_->setObjectName("navigationSidebarToggle");
+    navigationToggle_->setIcon(sidebarIcon(SidebarEdge::Left));
+    navigationToggle_->setIconSize(QSize(28, 28));
+    navigationToggle_->setFixedSize(48, 48);
+    navigationToggle_->setCheckable(true);
+    navigationToggle_->setCursor(Qt::PointingHandCursor);
+    navigationToggle_->setAccessibleName(QStringLiteral("开关工作区导航侧栏"));
+    setNavigationSidebarVisible(false);
+    connect(navigationToggle_, &QToolButton::toggled, this, [this](bool visible) {
+        setNavigationSidebarVisible(visible);
+        emit navigationSidebarToggled(visible);
+    });
+    addWidget(navigationToggle_);
     addMenuButton(QStringLiteral("文件"), fileMenu_);
     // 单栏没有联动目标，保留同一个功能条，但不创建双栏滚动菜单。
     if (mode != "preview")
@@ -87,7 +103,7 @@ FunctionBar::FunctionBar(const QString &mode, QWidget *parent)
     trailingSpacer_ = addWidget(space);
     agentToggle_ = new QToolButton(this);
     agentToggle_->setObjectName("agentSidebarToggle");
-    agentToggle_->setIcon(agentIcon(AgentIcon::Sidebar));
+    agentToggle_->setIcon(sidebarIcon(SidebarEdge::Right));
     agentToggle_->setIconSize(QSize(28, 28));
     agentToggle_->setFixedSize(48, 48);
     agentToggle_->setCheckable(true);
@@ -121,4 +137,11 @@ void FunctionBar::setAgentSidebarVisible(bool visible)
 bool FunctionBar::isScrollSynchronized() const
 {
     return synchronizedAction_ && synchronizedAction_->isChecked();
+}
+
+void FunctionBar::setNavigationSidebarVisible(bool visible)
+{
+    navigationToggle_->setChecked(visible);
+    navigationToggle_->setToolTip(visible ? QStringLiteral("收起工作区导航")
+                                          : QStringLiteral("展开工作区导航"));
 }

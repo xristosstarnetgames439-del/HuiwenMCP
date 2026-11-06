@@ -114,7 +114,7 @@ class PreviewRenderApp final : public CefApp, public CefRenderProcessHandler
         if (frame->IsMain() && (markdownWorkspace || url == "https://huiwen-md.invalid/preview.html" ||
                                url.rfind("data:text/html;base64,", 0) == 0))
         {
-            if (markdownWorkspace)
+            if (markdownWorkspace || url == "https://huiwen-md.invalid/preview.html")
                 context->GetGlobal()->SetValue(
                     "huiwenReportMarkdown",
                     CefV8Value::CreateFunction("huiwenReportMarkdown", new MarkdownReporter),

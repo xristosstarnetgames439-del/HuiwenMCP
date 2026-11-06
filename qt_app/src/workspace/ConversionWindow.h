@@ -14,6 +14,7 @@ class QLabel;
 class QAction;
 class CefDocumentPreviewWidget;
 class AgentSidebar;
+class NavigationSidebar;
 
 class ConversionWindow : public QWidget
 {
@@ -41,14 +42,19 @@ class ConversionWindow : public QWidget
     void checkUnsaved(std::function<void(bool)> completed);
     bool saveEdit();
     void updateEditState();
+    void toggleSidebar(QWidget *sidebar, int index, int &width, bool visible);
+    void handleOutline(const QJsonObject &message);
     const QString mode_;
     const QString kind_;
     CefDocumentPreviewWidget *editor_ = nullptr;
     CefDocumentPreviewWidget *livePreview_ = nullptr;
+    CefDocumentPreviewWidget *markdownPreview_ = nullptr;
     WorkspaceSplitter *splitter_;
     WorkspaceSplitter *bodySplitter_;
     AgentSidebar *agentSidebar_;
+    NavigationSidebar *navigationSidebar_;
     int agentSidebarWidth_ = 500;
+    int navigationSidebarWidth_ = 500;
     DocumentView *source_;
     DocumentView *result_ = nullptr;
     ConvertButton *button_ = nullptr;

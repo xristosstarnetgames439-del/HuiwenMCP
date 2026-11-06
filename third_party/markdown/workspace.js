@@ -11,6 +11,7 @@ const report = value => window.huiwenReportMarkdown?.(JSON.stringify(value));
 let editor, body, revision = 0, lines = 1, timer, observer, frame;
 let appliedTop = null, lastPosition = null, pendingPosition = null;
 let currentSource, cachedAnchors;
+let reportOutline = () => {};
 const editability = new Compartment();
 const isEditor = () => location.pathname === '/editor.html';
 const scroller = () => editor?.scrollDOM || document.scrollingElement;
@@ -82,7 +83,10 @@ function snapshot(type = 'change', request = 0) {
   const text = editor.state.doc.toString();
   if (new TextEncoder().encode(text).length > 16 * 1024 * 1024)
     report({ type: 'tooLarge', revision, request });
-  else report({ type, text, revision, request });
+  else {
+    report({ type, text, revision, request });
+    reportOutline(text, revision);
+  }
 }
 
 function render(source, nextRevision) {
@@ -135,9 +139,10 @@ function saveShortcut(event) {
   }
 }
 
-export function showWorkspace(source, showBrokenImage, copyCode) {
+export function showWorkspace(source, showBrokenImage, copyCode, publishOutline) {
   editor?.destroy();
   clearTimeout(timer);
+  reportOutline = publishOutline || (() => {});
   revision = 0;
   currentSource = undefined;
   lastPosition = pendingPosition = cachedAnchors = null;
@@ -161,6 +166,7 @@ export function showWorkspace(source, showBrokenImage, copyCode) {
       })
     ] }) });
     editor.scrollDOM.addEventListener('scroll', queuePosition, { passive: true });
+    reportOutline(source, revision);
     editor.focus();
   } else {
     editor = null;

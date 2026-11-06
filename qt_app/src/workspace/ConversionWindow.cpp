@@ -11,9 +11,11 @@
 #include "sandbox/SandboxService.h"
 #include "services/ConversionService.h"
 #include "sidebars/agent/AgentSidebar.h"
+#include "sidebars/navigation/NavigationSidebar.h"
 #include <QAction>
 #include <QCloseEvent>
 #include <QDir>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QMessageBox>
 #include <QPointer>
@@ -35,16 +37,17 @@
 ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWidget *parent)
     : QWidget(parent), mode_(mode), kind_(kind), splitter_(new WorkspaceSplitter(this)),
       bodySplitter_(new WorkspaceSplitter(this)), agentSidebar_(new AgentSidebar(this)),
-      source_(
-          kind == "word" ? new DocumentView(new WordPreviewWidget,
-                                            QStringLiteral("请选择 Word（DOC / DOCX）"), true)
-          : kind == "md" && mode == "edit"
-              ? new DocumentView(editor_ = new CefDocumentPreviewWidget(
-                                     CefDocumentPreviewWidget::Format::MarkdownEditor),
-                                 QStringLiteral("请选择 Markdown"), true)
-          : kind == "md"
-              ? new DocumentView(new MarkdownPreviewWidget, QStringLiteral("请选择 Markdown"), true)
-              : new DocumentView(new PdfPreviewWidget, QStringLiteral("请选择 PDF"), true)),
+      navigationSidebar_(new NavigationSidebar(this)),
+      source_(kind == "word" ? new DocumentView(new WordPreviewWidget,
+                                                QStringLiteral("请选择 Word（DOC / DOCX）"), true)
+              : kind == "md" && mode == "edit"
+                  ? new DocumentView(editor_ = new CefDocumentPreviewWidget(
+                                         CefDocumentPreviewWidget::Format::MarkdownEditor),
+                                     QStringLiteral("请选择 Markdown"), true)
+              : kind == "md"
+                  ? new DocumentView(markdownPreview_ = new MarkdownPreviewWidget,
+                                     QStringLiteral("请选择 Markdown"), true)
+                  : new DocumentView(new PdfPreviewWidget, QStringLiteral("请选择 PDF"), true)),
       functionBar_(new FunctionBar(mode, this)), sandbox_(new SandboxService(this)),
       status_(new QLabel(this))
 {
@@ -56,7 +59,8 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
     // 单栏只创建实际需要的一个渲染器；保留现有工作区及分栏容器，不另建预览窗口。
     if (conversion)
     {
-        result_ = new DocumentView(new MarkdownPreviewWidget, QStringLiteral("待转化 PDF"), false);
+        result_ = new DocumentView(markdownPreview_ = new MarkdownPreviewWidget,
+                                   QStringLiteral("待转化 PDF"), false);
         button_ = new ConvertButton(this);
         conversion_ = new ConversionService(this);
     }
@@ -92,29 +96,24 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
     }
     splitter_->installEventFilter(this);
     // 只有一个子控件时 QSplitter 不显示分隔条，文档占满原有内容区。
+    bodySplitter_->addWidget(navigationSidebar_);
     bodySplitter_->addWidget(splitter_);
     bodySplitter_->addWidget(agentSidebar_);
-    bodySplitter_->setStretchFactor(0, 1);
-    bodySplitter_->setStretchFactor(1, 0);
-    bodySplitter_->setSizes({820, agentSidebarWidth_});
+    navigationSidebar_->hide();
+    bodySplitter_->setStretchFactor(0, 0);
+    bodySplitter_->setStretchFactor(1, 1);
+    bodySplitter_->setStretchFactor(2, 0);
+    bodySplitter_->setSizes({0, 820, agentSidebarWidth_});
     layout->addWidget(bodySplitter_, 1);
-    connect(functionBar_, &FunctionBar::agentSidebarToggled, this, [this](bool visible) {
-        if (!visible && agentSidebar_->width() > 0)
-            agentSidebarWidth_ = agentSidebar_->width();
-        agentSidebar_->setVisible(visible);
-        if (visible)
-        {
-            bodySplitter_->setSizes(
-                {std::max(260, bodySplitter_->width() - agentSidebarWidth_), agentSidebarWidth_});
-            agentSidebar_->setFocus(Qt::OtherFocusReason);
-            agentSidebar_->raiseAbovePreview();
-        }
-        bodySplitter_->raiseAbovePreview();
-        placeConvertButton();
+    connect(functionBar_, &FunctionBar::navigationSidebarToggled, this, [this](bool visible) {
+        toggleSidebar(navigationSidebar_, 0, navigationSidebarWidth_, visible);
     });
+    connect(functionBar_, &FunctionBar::agentSidebarToggled, this,
+            [this](bool visible) { toggleSidebar(agentSidebar_, 2, agentSidebarWidth_, visible); });
     connect(bodySplitter_, &QSplitter::splitterMoved, this, [this] {
         bodySplitter_->raiseAbovePreview();
         agentSidebar_->raiseAbovePreview();
+        navigationSidebar_->raiseAbovePreview();
         placeConvertButton();
     });
     status_->setContentsMargins(16, 4, 16, 4);
@@ -128,6 +127,7 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
         splitter_->raiseAbovePreview();
         bodySplitter_->raiseAbovePreview();
         agentSidebar_->raiseAbovePreview();
+        navigationSidebar_->raiseAbovePreview();
         refreshScrollSync();
         placeConvertButton();
         updateEditState();
@@ -165,6 +165,9 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
         refreshBusyState();
     });
     connect(sandbox_, &SandboxService::failed, status_, &QLabel::setText);
+    if (markdownPreview_)
+        connect(markdownPreview_, &CefDocumentPreviewWidget::markdownMessage, this,
+                &ConversionWindow::handleOutline);
     if (result_ && !editor_)
     {
         connect(result_, &DocumentView::previewReadyChanged, this, refreshPreview);
@@ -189,6 +192,7 @@ ConversionWindow::ConversionWindow(const QString &mode, const QString &kind, QWi
                     converting_ = true;
                     refreshBusyState();
                     result_->setDocument({}, QStringLiteral("md"));
+                    navigationSidebar_->setOutline({}, false);
                     status_->setText(QStringLiteral("正在转化 PDF…"));
                     sandbox_->markUsed(document_);
                     conversion_->convertPdfToMd(document_.inputPath, document_.outputPath);
@@ -294,6 +298,26 @@ void ConversionWindow::resizeEvent(QResizeEvent *event)
     placeConvertButton();
 }
 
+void ConversionWindow::toggleSidebar(QWidget *sidebar, int index, int &width, bool visible)
+{
+    auto sizes = bodySplitter_->sizes();
+    if (!visible && sizes[index] > 0)
+        width = sizes[index];
+    sidebar->setVisible(visible);
+    sizes[index] = visible ? std::max(sidebar->minimumWidth(), width) : 0;
+    const int handles =
+        (navigationSidebar_->isHidden() ? 0 : 1) + (agentSidebar_->isHidden() ? 0 : 1);
+    sizes[1] = std::max(260, bodySplitter_->width() - sizes[0] - sizes[2] -
+                                 handles * bodySplitter_->handleWidth());
+    bodySplitter_->setSizes(sizes);
+    if (visible)
+        sidebar->setFocus(Qt::OtherFocusReason);
+    agentSidebar_->raiseAbovePreview();
+    navigationSidebar_->raiseAbovePreview();
+    bodySplitter_->raiseAbovePreview();
+    placeConvertButton();
+}
+
 bool ConversionWindow::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched == splitter_ && event->type() == QEvent::Resize)
@@ -352,6 +376,7 @@ void ConversionWindow::showDocument(const DocumentItem &document)
 {
     document_ = document;
     agentSidebar_->setDocument(document);
+    navigationSidebar_->setDocument(document);
     retry_ = false;
     status_->clear();
     if (document.kind == "word" &&
@@ -554,6 +579,12 @@ void ConversionWindow::requestClosePermission(std::function<void(bool)> complete
 void ConversionWindow::handleMarkdown(const QJsonObject &message, bool fromEditor)
 {
     const QString type = message.value("type").toString();
+    if (type == "outline")
+    {
+        if (fromEditor)
+            handleOutline(message);
+        return;
+    }
     const double revision = message.value("revision").toDouble(-1);
     if (!std::isfinite(revision) || revision < 0 || revision > 2147483647 ||
         std::floor(revision) != revision) return;
@@ -600,6 +631,34 @@ void ConversionWindow::handleMarkdown(const QJsonObject &message, bool fromEdito
     if (type == "save") saveEdit();
     if (type == "snapshot" && snapshot) finishSnapshot(true);
     updateEditState();
+}
+
+void ConversionWindow::handleOutline(const QJsonObject &message)
+{
+    if (message.value("type").toString() != "outline" || !message.value("headings").isArray() ||
+        !message.value("truncated").isBool() ||
+        message.value("revision").toDouble(-1) != editRevision_)
+        return;
+    const auto values = message.value("headings").toArray();
+    if (values.size() > 10000)
+        return;
+    QVector<MarkdownHeading> headings;
+    headings.reserve(values.size());
+    int previousLine = 0;
+    for (const auto &value : values)
+    {
+        const auto item = value.toObject();
+        const auto title = item.value("title");
+        const double level = item.value("level").toDouble(-1);
+        const double line = item.value("line").toDouble(-1);
+        if (!title.isString() || title.toString().size() > 512 || !std::isfinite(level) ||
+            level < 1 || level > 6 || std::floor(level) != level || !std::isfinite(line) ||
+            line < 1 || line > 16777217 || std::floor(line) != line || line <= previousLine)
+            return;
+        headings.append({title.toString(), static_cast<int>(level), static_cast<int>(line)});
+        previousLine = static_cast<int>(line);
+    }
+    navigationSidebar_->setOutline(headings, true, message.value("truncated").toBool());
 }
 
 bool ConversionWindow::scrollSyncEnabled() const

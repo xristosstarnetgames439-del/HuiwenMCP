@@ -35,6 +35,11 @@ set(workspace_sources
     src/sidebars/agent/components/AgentComposer.cpp
     src/sidebars/agent/dialogs/AgentSettingsDialog.cpp
     src/sidebars/agent/dialogs/AgentHistoryPopup.cpp
+    src/sidebars/navigation/NavigationSidebar.cpp
+    src/sidebars/navigation/components/SidebarSection.cpp
+    src/sidebars/navigation/components/SidebarSectionList.cpp
+    src/sidebars/navigation/sections/workspaceFiles/WorkspaceFilesSection.cpp
+    src/sidebars/navigation/sections/markdownOutline/MarkdownOutlineSection.cpp
     src/services/ConversionService.cpp
     src/sandbox/SandboxService.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "OHOS")

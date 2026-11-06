@@ -413,14 +413,18 @@ class PreviewClient final : public CefClient,
         if (message->GetName() == "Huiwen.Markdown")
         {
             if ((url_ != QStringLiteral("https://huiwen-md.invalid/editor.html") &&
-                 url_ != QStringLiteral("https://huiwen-md.invalid/live.html")) ||
+                 url_ != QStringLiteral("https://huiwen-md.invalid/live.html") &&
+                 url_ != QStringLiteral("https://huiwen-md.invalid/preview.html")) ||
                 values->GetSize() != 1 || values->GetType(0) != VTYPE_STRING)
                 return true;
             const auto json = values->GetString(0).ToString();
             if (json.size() <= 100 * 1024 * 1024)
             {
                 const auto data = QJsonDocument::fromJson(QByteArray::fromStdString(json));
-                if (data.isObject())
+                // 只读预览仅允许目录元数据，编辑/保存消息仍限于现有编辑页面。
+                if (data.isObject() &&
+                    (url_ != QStringLiteral("https://huiwen-md.invalid/preview.html") ||
+                     data.object().value("type").toString() == QStringLiteral("outline")))
                     markdownNotice_(data.object());
             }
             return true;

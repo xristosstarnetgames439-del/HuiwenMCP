@@ -3,7 +3,7 @@ import './library.css';
 import { createMarkdownRenderer, renderDiagrams } from './source/rich-markdown.ts';
 import { showWorkspace as setupWorkspace } from './workspace.js';
 export { receiveWorkspace } from './workspace.js';
-export function showWorkspace(source) { setupWorkspace(source, showBrokenImage, copyCode); }
+export function showWorkspace(source) { setupWorkspace(source, showBrokenImage, copyCode, reportOutline); }
 
 export { EditorState } from '@codemirror/state';
 export { EditorView } from '@codemirror/view';
@@ -20,9 +20,10 @@ export function renderMarkdown(source) {
 }
 
 // 只识别顶层独立段落中的页码，代码块、列表和普通正文中的同样文字不作锚点。
-export function renderPreview(source) {
+export function renderPreview(source, onOutline) {
   const environment = imageEnvironment();
   const tokens = renderer.parse(source, environment);
+  onOutline?.(collectHeadings(tokens));
   const markers = [];
   for (let i = 0; i < tokens.length - 2; i++) {
     if (tokens[i].type !== 'paragraph_open' || tokens[i].level !== 0 ||
@@ -43,6 +44,32 @@ export function renderPreview(source) {
     return `<section class="pdf-page" data-pdf-page="${marker.page}">` + renderTokens(body) +
       `<div class="pdf-page-number">--第${marker.page}页--</div>` + renderTokens(logos) + '</section>';
   }).join('');
+}
+
+// 与正文使用同一批 Markdown token，支持 ATX/Setext 标题，代码围栏不会误入目录。
+function collectHeadings(tokens) {
+  const headings = [];
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index], inline = tokens[index + 1];
+    if (token.type !== 'heading_open' || inline?.type !== 'inline' || !token.map) continue;
+    if (headings.length === 10000) return { headings, truncated: true };
+    const text = (inline.children || []).map(child => {
+      if (child.type === 'softbreak' || child.type === 'hardbreak') return ' ';
+      return child.type !== 'html_inline' && child.nesting === 0 ? child.content || '' : '';
+    }).join('').replace(/\s+/g, ' ').trim();
+    headings.push({ title: (text || '无标题').slice(0, 512), level: Number(token.tag.slice(1)),
+      line: token.map[0] + 1 });
+  }
+  return { headings, truncated: false };
+}
+
+function sendOutline(outline, revision) {
+  window.huiwenReportMarkdown?.(JSON.stringify({ type: 'outline', revision, ...outline }));
+}
+
+function reportOutline(source, revision) {
+  try { sendOutline(collectHeadings(renderer.parse(source, imageEnvironment())), revision); }
+  catch { console.warn('HUIWEN_OUTLINE: 无法解析当前文档目录'); }
 }
 
 let pages = [];
@@ -163,7 +190,9 @@ export function showPreview(source) {
   observer?.disconnect();
   // Error does not bubble, so use capture and install before assigning image src attributes.
   if (!listening) body.addEventListener('error', event => showBrokenImage(event.target), true);
-  body.innerHTML = renderPreview(source);
+  let outline;
+  body.innerHTML = renderPreview(source, value => { outline = value; });
+  sendOutline(outline, 0);
   for (const image of body.querySelectorAll('img[data-image-path]')) {
     if (!image.getAttribute('src')) showBrokenImage(image);
   }

@@ -14,14 +14,17 @@ class FunctionBar : public QToolBar
     bool isScrollSynchronized() const;
     QAction *addCommand(const QString &text);
     void setAgentSidebarVisible(bool visible);
+    void setNavigationSidebarVisible(bool visible);
 
   signals:
     void scrollSyncChanged(bool synchronized);
     void agentSidebarToggled(bool visible);
+    void navigationSidebarToggled(bool visible);
 
   private:
     FileMenu *fileMenu_;
     QAction *synchronizedAction_ = nullptr;
     QAction *trailingSpacer_ = nullptr;
     QToolButton *agentToggle_ = nullptr;
+    QToolButton *navigationToggle_ = nullptr;
 };
