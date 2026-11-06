@@ -21,6 +21,10 @@ class WorkspaceFileFilter : public QSortFilterProxyModel
         root_ = root;
         invalidateFilter();
     }
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override
+    {
+        return role == Qt::ToolTipRole ? QVariant() : QSortFilterProxyModel::data(index, role);
+    }
 
   protected:
     bool filterAcceptsRow(int row, const QModelIndex &parent) const override

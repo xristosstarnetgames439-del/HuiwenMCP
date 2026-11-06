@@ -17,7 +17,7 @@ NavigationSidebar::NavigationSidebar(QWidget *parent)
     setAttribute(Qt::WA_NativeWindow);
 #endif
     setObjectName("navigationSidebar");
-    setMinimumWidth(500);
+    setMinimumWidth(350);
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_StyledBackground);
     setAutoFillBackground(true);

@@ -54,7 +54,7 @@ class ConversionWindow : public QWidget
     AgentSidebar *agentSidebar_;
     NavigationSidebar *navigationSidebar_;
     int agentSidebarWidth_ = 500;
-    int navigationSidebarWidth_ = 500;
+    int navigationSidebarWidth_ = 350;
     DocumentView *source_;
     DocumentView *result_ = nullptr;
     ConvertButton *button_ = nullptr;

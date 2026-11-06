@@ -47,7 +47,6 @@ void MarkdownOutlineSection::setHeadings(const QVector<MarkdownHeading> &heading
             parents.removeLast();
         auto *item = new QTreeWidgetItem;
         item->setText(0, heading.title);
-        item->setToolTip(0, heading.title);
         item->setData(0, Qt::UserRole, heading.line);
         if (parents.isEmpty())
             tree_->addTopLevelItem(item);

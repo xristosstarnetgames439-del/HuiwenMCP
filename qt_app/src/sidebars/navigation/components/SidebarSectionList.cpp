@@ -104,7 +104,6 @@ void SidebarSectionList::arrange()
             handle->installEventFilter(this);
             handle->setEnabled(expanded > 1);
             handle->setCursor(expanded > 1 ? Qt::SplitVCursor : Qt::ArrowCursor);
-            handle->setToolTip(expanded > 1 ? QStringLiteral("上下拖动调整区块高度") : QString());
         }
         restoreHeights();
         return;

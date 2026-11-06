@@ -32,7 +32,6 @@ SidebarSection::SidebarSection(const QString &title, QWidget *content, QWidget *
     header_->setObjectName("navigationSectionHeader");
     header_->setText(title);
     header_->setAccessibleName(title);
-    headerRow_->setToolTip(QStringLiteral("点击折叠；长按标题栏拖动排序"));
     header_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     header_->setFixedHeight(44);
     header_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -96,9 +95,6 @@ void SidebarSection::setAvailable(bool available)
         return;
     available_ = available;
     header_->setProperty("available", available);
-    headerRow_->setToolTip(
-        available ? QStringLiteral("点击折叠；长按标题栏拖动排序")
-                  : QStringLiteral("当前工作区暂无可用 Markdown；长按标题栏可拖动排序"));
     header_->style()->unpolish(header_);
     header_->style()->polish(header_);
     header_->update();
