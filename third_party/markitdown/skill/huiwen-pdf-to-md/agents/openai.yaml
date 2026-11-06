@@ -1,0 +1,4 @@
+interface:
+  display_name: "汇文 PDF 转 Markdown"
+  short_description: "Convert PDFs to Markdown with offline OCR and extracted images"
+  default_prompt: "Use $huiwen-pdf-to-md to convert my PDF into Markdown and keep its extracted images."

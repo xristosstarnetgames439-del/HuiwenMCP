@@ -1,5 +1,6 @@
 """将汇文转换 API 与 MarkItDown 源码打成独立 pyz，不复制 Python 环境或原生依赖。"""
 
+import argparse
 import io
 from pathlib import Path
 import shutil
@@ -11,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "entry/src/main/resources/rawfile/python/huiwen_converter.pyz"
 
 
-def build():
+def build(output=OUTPUT):
+    output = Path(output)
     source = ROOT / "third_party/markitdown/source/packages/markitdown/src/markitdown"
     if not (source / "__init__.py").is_file():
         raise SystemExit("缺少 MarkItDown 源码，请执行 git submodule update --init --recursive")
@@ -39,19 +41,23 @@ def build():
                     entry.external_attr = 0o100644 << 16
                     package.writestr(entry, path.read_bytes())
         contents = archive.getvalue()
-    if OUTPUT.is_file() and OUTPUT.read_bytes() == contents:
-        print(f"[HUIWEN_PY_BUNDLE] CACHED file={OUTPUT}", flush=True)
+    if output.is_file() and output.read_bytes() == contents:
+        print(f"[HUIWEN_PY_BUNDLE] CACHED file={output}", flush=True)
         return
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=OUTPUT.parent, delete=False) as output:
-        temporary = Path(output.name)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=output.parent, delete=False) as pending:
+        temporary = Path(pending.name)
     try:
         temporary.write_bytes(contents)
-        temporary.replace(OUTPUT)
+        temporary.replace(output)
     finally:
         temporary.unlink(missing_ok=True)
-    print(f"[HUIWEN_PY_BUNDLE] GENERATED file={OUTPUT} bytes={len(contents)}", flush=True)
+    print(
+        f"[HUIWEN_PY_BUNDLE] GENERATED file={output} bytes={len(contents)}", flush=True
+    )
 
 
 if __name__ == "__main__":
-    build()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=OUTPUT)
+    build(parser.parse_args().output)

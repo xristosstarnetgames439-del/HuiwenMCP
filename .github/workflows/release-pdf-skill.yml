@@ -1,0 +1,36 @@
+name: Release PDF conversion skill
+
+on:
+  push:
+    tags:
+      - 'pdf-skill-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Fetch only conversion core
+        run: git submodule update --init third_party/markitdown/source
+      - name: Check installer
+        run: python -m unittest discover -s third_party/markitdown/tests -v
+      - name: Package skill
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python third_party/markitdown/build_skill.py --version "${RELEASE_TAG#pdf-skill-v}"
+      - name: Publish skill archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: >-
+          gh release create "$RELEASE_TAG"
+          .native-tools/skill-release/huiwen-pdf-to-md.zip
+          .native-tools/skill-release/SHA256SUMS
+          --verify-tag --latest --title "PDF to Markdown Skill ${RELEASE_TAG#pdf-skill-v}"
+          --notes "PDF-to-Markdown skill with local environment setup, OCR diagnostics, and the Huiwen conversion core. Read third_party/markitdown/skill/huiwen-pdf-to-md/SKILL.md before installing."
