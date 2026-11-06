@@ -85,7 +85,7 @@ void SidebarSection::setExpanded(bool expanded)
     header_->setAccessibleDescription(expanded_ ? QStringLiteral("已展开，点击折叠")
                                                 : QStringLiteral("已折叠，点击展开"));
     setMaximumHeight(expanded_ ? QWIDGETSIZE_MAX : headerRow_->height());
-    setMinimumHeight(headerRow_->height());
+    setMinimumHeight(expanded_ ? headerRow_->height() * 2 : headerRow_->height());
     setSizePolicy(QSizePolicy::Expanding, expanded_ ? QSizePolicy::Expanding : QSizePolicy::Fixed);
     emit stateChanged();
 }
