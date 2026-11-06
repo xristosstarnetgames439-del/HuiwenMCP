@@ -4,6 +4,9 @@
 #include <QTimer>
 #include <QWidget>
 class QToolButton;
+class QPixmap;
+class QGraphicsOpacityEffect;
+class QFrame;
 
 class SidebarSection : public QWidget
 {
@@ -20,6 +23,8 @@ class SidebarSection : public QWidget
     }
     void setExpanded(bool expanded);
     void setAvailable(bool available);
+    QRect titleBarRect() const;
+    QPixmap titleBarPixmap() const;
 
   signals:
     void stateChanged();
@@ -32,8 +37,10 @@ class SidebarSection : public QWidget
 
   private:
     void finishDrag(bool cancelled);
+    QFrame *headerRow_;
     QToolButton *header_;
     QWidget *content_;
+    QGraphicsOpacityEffect *headerOpacity_;
     QTimer holdTimer_;
     QPoint pressPosition_;
     QPoint pointerPosition_;

@@ -4,6 +4,7 @@
 #include <QWidget>
 class QVBoxLayout;
 class SidebarSection;
+class QLabel;
 
 class SidebarSectionList : public QWidget
 {
@@ -17,6 +18,8 @@ class SidebarSectionList : public QWidget
     void finishDrag(bool cancelled);
     QVBoxLayout *layout_;
     QWidget *indicator_;
+    QLabel *preview_;
+    QPoint dragOffset_;
     QList<SidebarSection *> sections_;
     SidebarSection *dragged_ = nullptr;
     int destination_ = -1;

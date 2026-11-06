@@ -32,9 +32,10 @@ NavigationSidebar::NavigationSidebar(QWidget *parent)
     setStyleSheet(QStringLiteral(
         "QWidget#navigationSidebar { background: white; }"
         "QLabel { color: #777777; font-size: 18px; }"
-        "QToolButton#navigationSectionHeader { background: #F3F3F3; color: #333333; "
+        "QFrame#navigationSectionHeaderRow { background: #F3F3F3; border: none; }"
+        "QFrame#navigationSectionHeaderRow:hover { background: #EAEAEA; }"
+        "QToolButton#navigationSectionHeader { background: transparent; color: #333333; "
         "border: none; padding: 8px 12px; font-size: 20px; text-align: left; }"
-        "QToolButton#navigationSectionHeader:hover { background: #EAEAEA; }"
         "QToolButton#navigationSectionHeader[available=\"false\"] { color: #999999; }"
         "QTreeView { background: white; color: #333333; border: none; font-size: 18px; outline: "
         "none; }"
